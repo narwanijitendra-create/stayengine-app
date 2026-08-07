@@ -53,8 +53,10 @@ export default function AdminLogin() {
         </button>
       </form>
       <p className="text-xs text-gray-400 mt-6">
-        Staff accounts are created via Supabase Auth and linked in the hotel_users table.
-        See README for how to create the first owner account for the demo hotel.
+        New hotel?{" "}
+        <a href="/admin/signup" className="underline">
+          Create an account
+        </a>
       </p>
     </main>
   );
