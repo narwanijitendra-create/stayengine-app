@@ -6,7 +6,7 @@ export type Hotel = {
   plan: "starter" | "growth" | "pro";
   brand_color: string;
   currency: string;
-  status: string;
+  status: "pending" | "active" | "suspended" | "trial";
   description: string | null;
   tagline: string | null;
   cover_photo_url: string | null;
