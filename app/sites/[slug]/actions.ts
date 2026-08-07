@@ -19,41 +19,30 @@ export type CreateBookingInput = {
 export async function createBooking(input: CreateBookingInput) {
   const supabase = createServerClient();
 
-  const { data: guest, error: guestError } = await supabase
-    .from("guests")
-    .insert({
-      hotel_id: input.hotelId,
-      name: input.guestName,
-      email: input.guestEmail,
-      phone: input.guestPhone ?? null,
-    })
-    .select()
-    .single();
+  // Guest + booking creation goes through a SECURITY DEFINER Postgres function
+  // (create_guest_booking) rather than direct table inserts. Anonymous guests
+  // are allowed to insert, but PostgREST's insert().select() also requires a
+  // matching SELECT policy to return the row - and we deliberately don't
+  // expose a public SELECT policy on `guests` (it holds PII). The RPC inserts
+  // both rows server-side with elevated privileges and returns only the
+  // booking id/status, never guest details.
+  const { data, error } = await supabase.rpc("create_guest_booking", {
+    p_hotel_id: input.hotelId,
+    p_room_type_id: input.roomTypeId,
+    p_check_in: input.checkIn,
+    p_check_out: input.checkOut,
+    p_guests_count: input.guestsCount,
+    p_total_amount: input.totalAmount,
+    p_currency: input.currency,
+    p_guest_name: input.guestName,
+    p_guest_email: input.guestEmail,
+    p_guest_phone: input.guestPhone ?? null,
+    p_source: input.source ?? "direct",
+  });
 
-  if (guestError || !guest) {
-    return { error: guestError?.message ?? "Could not save guest details" };
+  if (error || !data || !data[0]) {
+    return { error: error?.message ?? "Could not create booking" };
   }
 
-  const { data: booking, error: bookingError } = await supabase
-    .from("bookings")
-    .insert({
-      hotel_id: input.hotelId,
-      room_type_id: input.roomTypeId,
-      guest_id: guest.id,
-      check_in: input.checkIn,
-      check_out: input.checkOut,
-      guests_count: input.guestsCount,
-      total_amount: input.totalAmount,
-      currency: input.currency,
-      status: "confirmed",
-      source: input.source ?? "direct",
-    })
-    .select()
-    .single();
-
-  if (bookingError || !booking) {
-    return { error: bookingError?.message ?? "Could not create booking" };
-  }
-
-  return { booking };
+  return { booking: data[0] };
 }
