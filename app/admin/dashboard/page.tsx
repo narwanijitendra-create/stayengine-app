@@ -128,6 +128,11 @@ export default function AdminDashboard() {
   const [nearbyPoints, setNearbyPoints] = useState<NearbyPoint[]>([]);
   const [tab, setTab] = useState<"overview" | "bookings" | "rooms" | "profile">("overview");
   const [justArrived, setJustArrived] = useState<Set<string>>(new Set());
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const [noHotelYet, setNoHotelYet] = useState(false);
+  const [setupForm, setSetupForm] = useState({ name: "", slug: "" });
+  const [setupSaving, setSetupSaving] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
 
   const [roomForm, setRoomForm] = useState<RoomFormState | null>(null);
   const [roomSaving, setRoomSaving] = useState(false);
@@ -172,6 +177,13 @@ export default function AdminDashboard() {
         return;
       }
 
+      const { data: pa } = await supabase
+        .from("platform_admins")
+        .select("id")
+        .eq("auth_user_id", auth.user.id)
+        .maybeSingle();
+      setIsPlatformAdmin(!!pa);
+
       const { data: hu } = await supabase
         .from("hotel_users")
         .select("id, hotel_id, role, full_name, email, phone, avatar_url, hotels(*)")
@@ -179,6 +191,7 @@ export default function AdminDashboard() {
         .single();
 
       if (!hu) {
+        setNoHotelYet(true);
         setLoading(false);
         return;
       }
@@ -550,6 +563,71 @@ export default function AdminDashboard() {
   if (loading) return <main className="max-w-4xl mx-auto px-6 py-16 text-sm text-gray-500">Loading...</main>;
 
   if (!hotelUser || !hotel) {
+    if (noHotelYet) {
+      return (
+        <main className="max-w-sm mx-auto px-6 py-24">
+          <h1 className="text-lg font-medium mb-1">Set up your hotel</h1>
+          <p className="text-sm text-gray-500 mb-6">
+            Your account isn&apos;t linked to a hotel yet. Create one below — a StayEngine admin
+            will review and approve it before it goes live.
+          </p>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setSetupError(null);
+              if (!setupForm.name.trim() || !setupForm.slug.trim()) {
+                setSetupError("Please fill in both fields.");
+                return;
+              }
+              setSetupSaving(true);
+              const { error } = await supabase.rpc("request_new_hotel", {
+                p_hotel_name: setupForm.name.trim(),
+                p_slug: setupForm.slug
+                  .toLowerCase()
+                  .trim()
+                  .replace(/[^a-z0-9]+/g, "-")
+                  .replace(/(^-|-$)/g, ""),
+                p_full_name: null,
+                p_phone: null,
+              });
+              setSetupSaving(false);
+              if (error) {
+                setSetupError(
+                  error.message.includes("duplicate")
+                    ? "That URL is already taken — please choose another."
+                    : error.message
+                );
+                return;
+              }
+              window.location.reload();
+            }}
+            className="space-y-3"
+          >
+            <input
+              type="text"
+              placeholder="Hotel name"
+              value={setupForm.name}
+              onChange={(e) => setSetupForm((f) => ({ ...f, name: e.target.value }))}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+            />
+            <input
+              type="text"
+              placeholder="your-hotel (URL)"
+              value={setupForm.slug}
+              onChange={(e) => setSetupForm((f) => ({ ...f, slug: e.target.value }))}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+            />
+            {setupError && <p className="text-xs text-red-600">{setupError}</p>}
+            <button
+              disabled={setupSaving}
+              className="w-full bg-gray-900 text-white rounded-md py-2 text-sm disabled:opacity-50"
+            >
+              {setupSaving ? "Creating..." : "Create hotel"}
+            </button>
+          </form>
+        </main>
+      );
+    }
     return (
       <main className="max-w-4xl mx-auto px-6 py-16 text-sm text-gray-500">
         Your account isn&apos;t linked to a hotel yet. Add a row to hotel_users for this
@@ -587,6 +665,14 @@ export default function AdminDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {isPlatformAdmin && (
+            <a
+              href="/super-admin"
+              className="text-xs border border-gray-300 rounded-md px-3 py-1.5 hover:bg-gray-50"
+            >
+              Super admin
+            </a>
+          )}
           {hotelUser.avatar_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={hotelUser.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover" title={hotelUser.full_name ?? hotelUser.email} />
@@ -602,6 +688,20 @@ export default function AdminDashboard() {
           </button>
         </div>
       </div>
+
+      {hotel.status !== "active" && (
+        <div
+          className={`mb-6 text-sm rounded-md px-4 py-3 ${
+            hotel.status === "pending"
+              ? "bg-amber-50 text-amber-800 border border-amber-200"
+              : "bg-red-50 text-red-800 border border-red-200"
+          }`}
+        >
+          {hotel.status === "pending"
+            ? "Your hotel is pending approval. It won't be visible to guests until a StayEngine admin approves it."
+            : `Your hotel is currently ${hotel.status}. Contact StayEngine support for details.`}
+        </div>
+      )}
 
       <div className="flex gap-2 mb-6 flex-wrap">
         {(["overview", "bookings", "rooms", "profile"] as const).map((t) => (
@@ -976,7 +1076,7 @@ export default function AdminDashboard() {
               {nearbyPoints.map((p) => (
                 <div key={p.id} className="flex items-center justify-between text-sm border border-gray-100 rounded-md px-3 py-1.5">
                   <span>
-                    {NEARBY_CATEGORIES.find((c) => c.value === p.category)?.icon ?? "�M"} {p.name}
+                    {NEARBY_CATEGORIES.find((c) => c.value === p.category)?.icon ?? "📍"} {p.name}
                     {p.distance_label && <span className="text-xs text-gray-400"> · {p.distance_label}</span>}
                   </span>
                   <button onClick={() => deleteNearbyPoint(p.id)} className="text-xs text-red-600">
@@ -1037,7 +1137,7 @@ export default function AdminDashboard() {
                   {suggestions.map((s) => (
                     <div key={s.name} className="flex items-center justify-between text-sm border border-gray-100 rounded-md px-3 py-1.5">
                       <span>
-                        {NEARBY_CATEGORIES.find((c) => c.value === s.category)?.icon ?? "�M"} {s.name}
+                        {NEARBY_CATEGORIES.find((c) => c.value === s.category)?.icon ?? "📍"} {s.name}
                         <span className="text-xs text-gray-400"> · {s.distanceKm < 1 ? Math.round(s.distanceKm * 1000) + "m" : s.distanceKm.toFixed(1) + "km"}</span>
                       </span>
                       <button onClick={() => addSuggestion(s)} className="text-xs text-gray-900 border border-gray-300 rounded-md px-2 py-0.5">
