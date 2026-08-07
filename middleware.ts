@@ -17,7 +17,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const config = {
-  matcher: ["/((?!_next|api|widget|admin|favicon.ico|robots.txt).*)"],
+  matcher: ["/((?!_next|api|widget|admin|super-admin|favicon.ico|robots.txt).*)"],
 };
 
 async function lookupSlugByCustomDomain(host: string): Promise<string | null> {
