@@ -1279,6 +1279,7 @@ function LocationPicker({
   const [mapsLinkInput, setMapsLinkInput] = useState("");
   const [resolving, setResolving] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [linkNote, setLinkNote] = useState<string | null>(null);
 
   function extractLatLon(text: string): { lat: number; lon: number } | null {
     const atMatch = text.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
@@ -1292,10 +1293,34 @@ function LocationPicker({
     return null;
   }
 
+  // Best-effort fallback for links that don't carry coordinates at all (e.g.
+  // Google's share.google short links, which often resolve to a Search
+  // results page rather than a Maps page). Geocodes a place name via the
+  // free OpenStreetMap Nominatim API and flags the result as approximate.
+  async function tryGeocode(query: string): Promise<boolean> {
+    const q = query.trim();
+    if (!q) return false;
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`
+      );
+      const results = await res.json();
+      if (Array.isArray(results) && results.length > 0 && results[0].lat && results[0].lon) {
+        onLocationChange(String(Number(results[0].lat)), String(Number(results[0].lon)));
+        setLinkNote(`Approximate location for "${q}" — check the pin below and adjust the coordinates if needed.`);
+        return true;
+      }
+    } catch {
+      // ignore, caller shows a generic error
+    }
+    return false;
+  }
+
   async function handleUseMapsLink() {
     const text = mapsLinkInput.trim();
     if (!text) return;
     setLinkError(null);
+    setLinkNote(null);
 
     const direct = extractLatLon(text);
     if (direct) {
@@ -1305,7 +1330,14 @@ function LocationPicker({
     }
 
     if (!/^https?:\/\//i.test(text)) {
-      setLinkError('Couldn\'t find coordinates in that text. Paste a Google Maps link, or type "lat, lon" directly.');
+      setResolving(true);
+      const geocoded = await tryGeocode(text);
+      setResolving(false);
+      if (geocoded) {
+        setMapsLinkInput("");
+        return;
+      }
+      setLinkError('Couldn\'t find that location. Paste a Google Maps link, type "lat, lon", or try a more specific address.');
       return;
     }
 
@@ -1317,19 +1349,39 @@ function LocationPicker({
         body: JSON.stringify({ url: text }),
       });
       const data = await res.json();
-      const resolved: { lat: number; lon: number } | null = data.finalUrl ? extractLatLon(data.finalUrl) : null;
+      const finalUrl: string | undefined = data.finalUrl;
+      const resolved: { lat: number; lon: number } | null = finalUrl ? extractLatLon(finalUrl) : null;
       if (resolved) {
         onLocationChange(String(resolved.lat), String(resolved.lon));
         setMapsLinkInput("");
-      } else {
-        setLinkError(
-          "Couldn't find coordinates in that link. Open it in Google Maps, make sure the pin is on the hotel, then copy the link again."
-        );
+        setResolving(false);
+        return;
       }
+
+      // No coordinates in the resolved link — some Google share links (e.g.
+      // share.google) land on a Search results page instead of a Maps page.
+      // Fall back to geocoding the place name if we can find one.
+      let query: string | null = null;
+      if (finalUrl) {
+        try {
+          query = new URL(finalUrl).searchParams.get("q");
+        } catch {
+          // ignore
+        }
+      }
+      const geocoded = await tryGeocode(query || "");
+      setResolving(false);
+      if (geocoded) {
+        setMapsLinkInput("");
+        return;
+      }
+      setLinkError(
+        "That link doesn't carry exact coordinates. Open it, tap the pin in Google Maps, and copy the address or lat/long shown instead."
+      );
     } catch {
+      setResolving(false);
       setLinkError("Couldn't read that link. Try pasting the latitude/longitude directly instead.");
     }
-    setResolving(false);
   }
 
   const hasCoords =
@@ -1370,6 +1422,7 @@ function LocationPicker({
         </button>
       </div>
       {linkError && <p className="text-xs text-red-500 mb-2">{linkError}</p>}
+      {linkNote && <p className="text-xs text-amber-600 mb-2">{linkNote}</p>}
       <div className="grid grid-cols-2 gap-2">
         <input
           type="text"
@@ -1413,7 +1466,6 @@ function LocationPicker({
     </div>
   );
 }
-
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
