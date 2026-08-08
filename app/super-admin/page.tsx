@@ -37,9 +37,12 @@ export default function SuperAdmin() {
   const [admins, setAdmins] = useState<PlatformAdminRow[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const [newHotel, setNewHotel] = useState({ name: "", slug: "" });
+  const [newHotel, setNewHotel] = useState({ name: "", slug: "", ownerEmail: "" });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [createdCreds, setCreatedCreds] = useState<{ hotelName: string; email: string; password: string } | null>(
+    null
+  );
 
   const [newAdminEmail, setNewAdminEmail] = useState("");
   const [addingAdmin, setAddingAdmin] = useState(false);
@@ -89,22 +92,34 @@ export default function SuperAdmin() {
   async function createHotel(e: React.FormEvent) {
     e.preventDefault();
     setCreateError(null);
-    if (!newHotel.name.trim() || !newHotel.slug.trim()) {
-      setCreateError("Please fill in both fields.");
+    setCreatedCreds(null);
+    if (!newHotel.name.trim() || !newHotel.slug.trim() || !newHotel.ownerEmail.trim()) {
+      setCreateError("Please fill in the hotel name, URL, and owner email.");
       return;
     }
     setCreating(true);
-    const { error } = await supabase.from("hotels").insert({
-      name: newHotel.name.trim(),
-      slug: slugify(newHotel.slug),
-      status: "active",
-    });
+    const { data, error } = await supabase
+      .rpc("create_hotel_with_owner", {
+        p_hotel_name: newHotel.name.trim(),
+        p_slug: slugify(newHotel.slug),
+        p_owner_email: newHotel.ownerEmail.trim(),
+      })
+      .select()
+      .single();
     setCreating(false);
     if (error) {
-      setCreateError(error.message.includes("duplicate") ? "That URL is already taken." : error.message);
+      setCreateError(
+        error.message.includes("duplicate") && error.message.includes("slug")
+          ? "That URL is already taken."
+          : error.message.includes("already exists")
+          ? "An account with that owner email already exists."
+          : error.message
+      );
       return;
     }
-    setNewHotel({ name: "", slug: "" });
+    const row = data as { hotel_id: string; owner_email: string; owner_password: string } | null;
+    setCreatedCreds({ hotelName: newHotel.name.trim(), email: row?.owner_email ?? "", password: row?.owner_password ?? "" });
+    setNewHotel({ name: "", slug: "", ownerEmail: "" });
     await loadAll();
   }
 
@@ -282,6 +297,13 @@ export default function SuperAdmin() {
             onChange={(e) => setNewHotel((f) => ({ ...f, slug: e.target.value }))}
             className="border border-gray-300 rounded-md px-3 py-2 text-sm"
           />
+          <input
+            type="email"
+            placeholder="Owner's email"
+            value={newHotel.ownerEmail}
+            onChange={(e) => setNewHotel((f) => ({ ...f, ownerEmail: e.target.value }))}
+            className="border border-gray-300 rounded-md px-3 py-2 text-sm"
+          />
           <button
             disabled={creating}
             className="bg-gray-900 text-white rounded-md px-4 py-2 text-sm disabled:opacity-50"
@@ -290,9 +312,32 @@ export default function SuperAdmin() {
           </button>
         </form>
         {createError && <p className="text-xs text-red-600 mt-2">{createError}</p>}
+        {createdCreds && (
+          <div className="mt-3 border border-green-200 bg-green-50 rounded-lg px-4 py-3 text-sm">
+            <p className="font-medium text-green-800 mb-1">
+              {createdCreds.hotelName} created — save these owner login details now, they won&apos;t be shown again:
+            </p>
+            <p className="text-green-900">
+              Email: <span className="font-mono">{createdCreds.email}</span>
+            </p>
+            <p className="text-green-900">
+              Password: <span className="font-mono">{createdCreds.password}</span>
+            </p>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(
+                  `Email: ${createdCreds.email}\nPassword: ${createdCreds.password}\nLogin: ${window.location.origin}/admin/login`
+                );
+              }}
+              className="text-xs border border-green-300 rounded-md px-2.5 py-1 mt-2"
+            >
+              Copy
+            </button>
+          </div>
+        )}
         <p className="text-xs text-gray-400 mt-2">
-          Created active immediately, with no owner assigned. Have the owner sign up separately
-          and you can add them via hotel_users, or point them to the signup flow instead.
+          Creates the hotel and a real owner login in one step — the owner can sign in at
+          /admin/login and manage their own hotel independently.
         </p>
       </section>
 
