@@ -1049,12 +1049,11 @@ function AdminDashboardInner() {
               <LocationPicker
                 latitude={hotelForm.latitude}
                 longitude={hotelForm.longitude}
-                onLocationChange={(lat, lon, address) =>
+                onLocationChange={(lat, lon) =>
                   setHotelForm({
                     ...hotelForm,
                     latitude: lat,
                     longitude: lon,
-                    ...(address ? { address } : {}),
                   })
                 }
               />
@@ -1241,7 +1240,7 @@ function LocationPicker({
 }: {
   latitude: string;
   longitude: string;
-  onLocationChange: (lat: string, lon: string, address?: string) => void;
+  onLocationChange: (lat: string, lon: string) => void;
 }) {
   const mapDivRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
@@ -1249,6 +1248,7 @@ function LocationPicker({
   const [leafletReady, setLeafletReady] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<
     { display_name: string; lat: string; lon: string }[]
   >([]);
@@ -1276,19 +1276,10 @@ function LocationPicker({
     document.body.appendChild(script);
   }, []);
 
-  async function reverseGeocodeAndReport(lat: number, lon: number) {
+  function reportLocation(lat: number, lon: number) {
+    // Only the coordinates are reported here — the hotel's Address field is
+    // edited independently and should never be overwritten by map actions.
     onLocationChange(String(lat), String(lon));
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`
-      );
-      const data = await res.json();
-      if (data?.display_name) {
-        onLocationChange(String(lat), String(lon), data.display_name);
-      }
-    } catch {
-      // ignore - the pin position is already saved even if the reverse lookup fails
-    }
   }
 
   // Initialize the map once Leaflet has loaded.
@@ -1315,11 +1306,11 @@ function LocationPicker({
     const marker = L.marker([startLat, startLon], { draggable: true }).addTo(map);
     marker.on("dragend", () => {
       const pos = marker.getLatLng();
-      reverseGeocodeAndReport(pos.lat, pos.lng);
+      reportLocation(pos.lat, pos.lng);
     });
     map.on("click", (e: any) => {
       marker.setLatLng(e.latlng);
-      reverseGeocodeAndReport(e.latlng.lat, e.latlng.lng);
+      reportLocation(e.latlng.lat, e.latlng.lng);
     });
 
     mapRef.current = map;
@@ -1348,14 +1339,20 @@ function LocationPicker({
     if (!searchQuery.trim()) return;
     setSearching(true);
     setSearchResults([]);
+    setSearchError(null);
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(searchQuery)}`
+        `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(searchQuery)}`,
+        { headers: { Accept: "application/json" } }
       );
+      if (!res.ok) throw new Error(`Search failed (${res.status})`);
       const results = await res.json();
+      if (!results || results.length === 0) {
+        setSearchError("No matches found — try a different search, or click the map to drop a pin.");
+      }
       setSearchResults(results ?? []);
     } catch {
-      // ignore - the admin can still drop a pin manually
+      setSearchError("Search is temporarily unavailable — click the map or drag the pin instead.");
     }
     setSearching(false);
   }
@@ -1367,9 +1364,10 @@ function LocationPicker({
       markerRef.current.setLatLng([lat, lon]);
       mapRef.current.setView([lat, lon], 16);
     }
-    onLocationChange(r.lat, r.lon, r.display_name);
+    reportLocation(lat, lon);
     setSearchResults([]);
-    setSearchQuery(r.display_name);
+    setSearchQuery("");
+    setSearchError(null);
   }
 
   const hasCoords = !!latitude && !!longitude;
@@ -1380,7 +1378,8 @@ function LocationPicker({
   return (
     <div className="sm:col-span-2">
       <p className="text-xs text-gray-500 mb-1">
-        Pin the hotel&apos;s exact location — search, click the map, or drag the marker
+        Pin the hotel&apos;s exact location — search, click the map, or drag the marker. This only
+        sets the coordinates; type the Address above separately.
       </p>
       <div className="flex gap-2 mb-2">
         <input
@@ -1403,6 +1402,7 @@ function LocationPicker({
           {searching ? "Searching..." : "Search"}
         </button>
       </div>
+            {searchError && <p className="text-xs text-red-500 mb-2">{searchError}</p>}
       {searchResults.length > 0 && (
         <div className="border border-gray-200 rounded-md mb-2 divide-y divide-gray-100 max-h-40 overflow-y-auto">
           {searchResults.map((r, i) => (
