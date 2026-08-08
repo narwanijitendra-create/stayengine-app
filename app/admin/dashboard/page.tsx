@@ -1434,6 +1434,17 @@ function LocationPicker({
           </a>
         )}
       </div>
+      {hasCoords && (       
+      <>
+          <p className="text-xs text-gray-500 mb-1">Google Maps preview (updates once you save)</p>
+          <iframe
+            title="Google Maps preview"
+            src={`https://maps.google.com/maps?q=${latitude},${longitude}&z=16&output=embed`}
+            className="w-full h-56 rounded-md border border-gray-300"
+            loading="lazy"
+          />
+        </>
+      )}
     </div>
   );
 }
