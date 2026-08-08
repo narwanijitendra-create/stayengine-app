@@ -15,6 +15,9 @@ export type Hotel = {
   latitude: number | null;
   longitude: number | null;
   amenities: string[];
+  contact_phone: string | null;
+  contact_email: string | null;
+  whatsapp_number: string | null;
 };
 
 export type RoomType = {
