@@ -665,14 +665,6 @@ export default function AdminDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {isPlatformAdmin && (
-            <a
-              href="/super-admin"
-              className="text-xs border border-gray-300 rounded-md px-3 py-1.5 hover:bg-gray-50"
-            >
-              Super admin
-            </a>
-          )}
           {hotelUser.avatar_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={hotelUser.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover" title={hotelUser.full_name ?? hotelUser.email} />
