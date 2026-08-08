@@ -31,6 +31,7 @@ export async function POST(req: Request) {
     "google.com",
     "www.google.com",
     "maps.google.com",
+    "share.google",
   ];
   if (!allowedHosts.some((h) => host === h || host.endsWith(`.${h}`))) {
     return NextResponse.json({ error: "Only Google Maps links are supported" }, { status: 400 });
