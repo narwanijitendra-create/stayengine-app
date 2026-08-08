@@ -354,9 +354,14 @@ export default function BookingClient({
               })}
             </div>
 
-            {!embedded && (hotel.address || (nearbyPoints && nearbyPoints.length > 0)) && (
-              <LocationSection hotel={hotel} nearbyPoints={nearbyPoints} />
-            )}
+            {!embedded &&
+              (hotel.address ||
+                hotel.contact_phone ||
+                hotel.contact_email ||
+                hotel.whatsapp_number ||
+                (nearbyPoints && nearbyPoints.length > 0)) && (
+                <LocationSection hotel={hotel} nearbyPoints={nearbyPoints} />
+              )}
           </>
         )}
 
