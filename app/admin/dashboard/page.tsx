@@ -1392,7 +1392,7 @@ function LocationPicker({
         }
         reportLocation(lat, lon);
       },
-      () => setSearchError("Couldn't get your current location â check location permissions."),
+      () => setSearchError("Couldn't get your current location — check location permissions."),
       { enableHighAccuracy: true, timeout: 10000 }
     );
   }
@@ -1413,7 +1413,7 @@ function LocationPicker({
   return (
     <div className="sm:col-span-2">
       <p className="text-xs text-gray-500 mb-1">
-        Pin the hotel&apos;s exact location â search, click the map, drag the marker, use your current
+        Pin the hotel&apos;s exact location — search, click the map, drag the marker, use your current
         location, or type coordinates directly. This only sets the coordinates; type the Address above
         separately.
       </p>
