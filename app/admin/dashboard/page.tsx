@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { Booking, RoomType, Hotel, NearbyPoint } from "@/lib/types";
 
@@ -117,8 +117,18 @@ async function uploadHotelMedia(
 }
 
 export default function AdminDashboard() {
+  return (
+    <Suspense fallback={<main className="max-w-4xl mx-auto px-6 py-16 text-sm text-gray-500">Loading...</main>}>
+      <AdminDashboardInner />
+    </Suspense>
+  );
+}
+
+function AdminDashboardInner() {
   const supabase = createBrowserClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const impersonateHotelId = searchParams.get("hotel");
 
   const [loading, setLoading] = useState(true);
   const [hotelUser, setHotelUser] = useState<HotelUserRow | null>(null);
@@ -183,6 +193,55 @@ export default function AdminDashboard() {
         .eq("auth_user_id", auth.user.id)
         .maybeSingle();
       setIsPlatformAdmin(!!pa);
+
+      // Super admin managing a hotel on its behalf: skip the normal
+      // hotel_users lookup and load the target hotel directly.
+      if (pa && impersonateHotelId) {
+        const { data: targetHotel } = await supabase
+          .from("hotels")
+          .select("*")
+          .eq("id", impersonateHotelId)
+          .single();
+
+        if (targetHotel) {
+          const synthetic: HotelUserRow = {
+            id: "",
+            hotel_id: targetHotel.id,
+            role: "owner",
+            full_name: null,
+            email: auth.user.email ?? "Super admin",
+            phone: null,
+            avatar_url: null,
+            hotels: targetHotel,
+          };
+          setHotelUser(synthetic);
+          setHotel(targetHotel);
+          setHotelForm({
+            tagline: targetHotel.tagline ?? "",
+            description: targetHotel.description ?? "",
+            address: targetHotel.address ?? "",
+            latitude: targetHotel.latitude != null ? String(targetHotel.latitude) : "",
+            longitude: targetHotel.longitude != null ? String(targetHotel.longitude) : "",
+            brand_color: targetHotel.brand_color ?? "#1F4E5F",
+            amenities: targetHotel.amenities ?? [],
+          });
+
+          const [{ data: b }, { data: rt }, { data: np }] = await Promise.all([
+            supabase
+              .from("bookings")
+              .select("*")
+              .eq("hotel_id", targetHotel.id)
+              .order("check_in", { ascending: true }),
+            supabase.from("room_types").select("*").eq("hotel_id", targetHotel.id).order("sort_order"),
+            supabase.from("nearby_points").select("*").eq("hotel_id", targetHotel.id).order("sort_order"),
+          ]);
+          setBookings(b ?? []);
+          setRoomTypes(rt ?? []);
+          setNearbyPoints(np ?? []);
+          setLoading(false);
+          return;
+        }
+      }
 
       const { data: hu } = await supabase
         .from("hotel_users")
@@ -681,6 +740,15 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      {isPlatformAdmin && impersonateHotelId && (
+        <div className="mb-6 text-sm rounded-md px-4 py-3 bg-blue-50 text-blue-800 border border-blue-200 flex items-center justify-between">
+          <span>Managing {hotel.name} as super admin.</span>
+          <a href="/super-admin" className="underline whitespace-nowrap ml-3">
+            Back to super admin
+          </a>
+        </div>
+      )}
+
       {hotel.status !== "active" && (
         <div
           className={`mb-6 text-sm rounded-md px-4 py-3 ${
@@ -933,7 +1001,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {tab === "profile" && hotelForm && meForm && (
+      {tab === "profile" && hotelForm && (
         <div className="space-y-6">
           {/* Hotel content & branding */}
           <div className="border border-gray-200 rounded-xl p-4">
@@ -1084,7 +1152,7 @@ export default function AdminDashboard() {
                 placeholder="Name"
                 value={nearbyForm.name}
                 onChange={(e) => setNearbyForm({ ...nearbyForm, name: e.target.value })}
-                className="border border-gray-300 rounded-md px-3 py-2 text-sm sm:col-span-2"
+                className="border border-gray-300 rounded-md px-3 py-2 text-sm:col-span-2"
               />
               <select
                 value={nearbyForm.category}
@@ -1143,50 +1211,52 @@ export default function AdminDashboard() {
           </div>
 
           {/* Personal admin profile */}
-          <div className="border border-gray-200 rounded-xl p-4">
-            <p className="text-sm font-medium mb-3">Your profile</p>
-            <div className="flex items-center gap-3 mb-3">
-              {hotelUser.avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={hotelUser.avatar_url} alt="" className="w-12 h-12 rounded-full object-cover" />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 text-lg">
-                  {(hotelUser.full_name || hotelUser.email).slice(0, 1).toUpperCase()}
-                </div>
-              )}
-              <input
-                type="file"
-                accept="image/*"
-                disabled={avatarUploading}
-                onChange={(e) => handleAvatarUpload(e.target.files?.[0] ?? null)}
-                className="text-xs"
-              />
+          {meForm && hotelUser.id && (
+            <div className="border border-gray-200 rounded-xl p-4">
+              <p className="text-sm font-medium mb-3">Your profile</p>
+              <div className="flex items-center gap-3 mb-3">
+                {hotelUser.avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={hotelUser.avatar_url} alt="" className="w-12 h-12 rounded-full object-cover" />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 text-lg">
+                    {(hotelUser.full_name || hotelUser.email).slice(0, 1).toUpperCase()}
+                  </div>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={avatarUploading}
+                  onChange={(e) => handleAvatarUpload(e.target.files?.[0] ?? null)}
+                  className="text-xs"
+                />
+              </div>
+              <div className="grid sm:grid-cols-2 gap-2 mb-3">
+                <input
+                  placeholder="Full name"
+                  value={meForm.full_name}
+                  onChange={(e) => setMeForm({ ...meForm, full_name: e.target.value })}
+                  className="border border-gray-300 rounded-md px-3 py-2 text-sm"
+                />
+                <input
+                  placeholder="Phone"
+                  value={meForm.phone}
+                  onChange={(e) => setMeForm({ ...meForm, phone: e.target.value })}
+                  className="border border-gray-300 rounded-md px-3 py-2 text-sm"
+                />
+              </div>
+              <p className="text-xs text-gray-400 mb-3">
+                {hotelUser.email} · {hotelUser.role}
+              </p>
+              <button
+                onClick={saveMyProfile}
+                disabled={meSaving}
+                className="text-xs bg-gray-900 text-white rounded-md px-3 py-1.5 disabled:opacity-50"
+              >
+                {meSaving ? "Saving..." : "Save profile"}
+              </button>
             </div>
-            <div className="grid sm:grid-cols-2 gap-2 mb-3">
-              <input
-                placeholder="Full name"
-                value={meForm.full_name}
-                onChange={(e) => setMeForm({ ...meForm, full_name: e.target.value })}
-                className="border border-gray-300 rounded-md px-3 py-2 text-sm"
-              />
-              <input
-                placeholder="Phone"
-                value={meForm.phone}
-                onChange={(e) => setMeForm({ ...meForm, phone: e.target.value })}
-                className="border border-gray-300 rounded-md px-3 py-2 text-sm"
-              />
-            </div>
-            <p className="text-xs text-gray-400 mb-3">
-              {hotelUser.email} · {hotelUser.role}
-            </p>
-            <button
-              onClick={saveMyProfile}
-              disabled={meSaving}
-              className="text-xs bg-gray-900 text-white rounded-md px-3 py-1.5 disabled:opacity-50"
-            >
-              {meSaving ? "Saving..." : "Save profile"}
-            </button>
-          </div>
+          )}
         </div>
       )}
     </main>
