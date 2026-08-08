@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { Booking, RoomType, Hotel, NearbyPoint } from "@/lib/types";
@@ -1276,231 +1276,107 @@ function LocationPicker({
   longitude: string;
   onLocationChange: (lat: string, lon: string) => void;
 }) {
-  const mapDivRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<any>(null);
-  const markerRef = useRef<any>(null);
-  const [leafletReady, setLeafletReady] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const [searchResults, setSearchResults] = useState<
-    { display_name: string; lat: string; lon: string }[]
-  >([]);
+  const [mapsLinkInput, setMapsLinkInput] = useState("");
+  const [resolving, setResolving] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
 
-  // Load Leaflet (free, no API key) from a CDN once.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if ((window as any).L) {
-      setLeafletReady(true);
-      return;
-    }
-    const existing = document.getElementById("leaflet-js");
-    if (existing) {
-      existing.addEventListener("load", () => setLeafletReady(true));
-      return;
-    }
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-    document.head.appendChild(link);
-    const script = document.createElement("script");
-    script.id = "leaflet-js";
-    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    script.onload = () => setLeafletReady(true);
-    document.body.appendChild(script);
-  }, []);
-
-  function reportLocation(lat: number, lon: number) {
-    // Only the coordinates are reported here — the hotel's Address field is
-    // edited independently and should never be overwritten by map actions.
-    onLocationChange(String(lat), String(lon));
+  function extractLatLon(text: string): { lat: number; lon: number } | null {
+    const atMatch = text.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (atMatch) return { lat: Number(atMatch[1]), lon: Number(atMatch[2]) };
+    const qMatch = text.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (qMatch) return { lat: Number(qMatch[1]), lon: Number(qMatch[2]) };
+    const llMatch = text.match(/[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (llMatch) return { lat: Number(llMatch[1]), lon: Number(llMatch[2]) };
+    const plainMatch = text.match(/(-?\d{1,3}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/);
+    if (plainMatch) return { lat: Number(plainMatch[1]), lon: Number(plainMatch[2]) };
+    return null;
   }
 
-  // Initialize the map once Leaflet has loaded.
-  useEffect(() => {
-    if (!leafletReady || !mapDivRef.current || mapRef.current) return;
-    const L = (window as any).L;
-    delete L.Icon.Default.prototype._getIconUrl;
-    L.Icon.Default.mergeOptions({
-      iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-      iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-      shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-    });
+  async function handleUseMapsLink() {
+    const text = mapsLinkInput.trim();
+    if (!text) return;
+    setLinkError(null);
 
-    const startLat = latitude ? Number(latitude) : 20.5937;
-    const startLon = longitude ? Number(longitude) : 78.9629;
-    const startZoom = latitude && longitude ? 15 : 4;
-
-    const map = L.map(mapDivRef.current).setView([startLat, startLon], startZoom);
-        L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-      attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
-      maxZoom: 20,
-      subdomains: "abcd",
-    }).addTo(map);
-
-    const marker = L.marker([startLat, startLon], { draggable: true }).addTo(map);
-    marker.on("dragend", () => {
-      const pos = marker.getLatLng();
-      reportLocation(pos.lat, pos.lng);
-    });
-    map.on("click", (e: any) => {
-      marker.setLatLng(e.latlng);
-      reportLocation(e.latlng.lat, e.latlng.lng);
-    });
-
-    mapRef.current = map;
-    markerRef.current = marker;
-
-    // The map can render at zero height if its tab was hidden on first paint.
-    setTimeout(() => map.invalidateSize(), 200);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leafletReady]);
-
-  // Keep the marker in sync if coordinates change from outside the map (e.g. on load).
-  useEffect(() => {
-    if (!mapRef.current || !markerRef.current || !latitude || !longitude) return;
-    const lat = Number(latitude);
-    const lon = Number(longitude);
-    if (Number.isNaN(lat) || Number.isNaN(lon)) return;
-    const current = markerRef.current.getLatLng();
-    if (Math.abs(current.lat - lat) > 1e-6 || Math.abs(current.lng - lon) > 1e-6) {
-      markerRef.current.setLatLng([lat, lon]);
-      mapRef.current.setView([lat, lon], Math.max(mapRef.current.getZoom(), 15));
+    const direct = extractLatLon(text);
+    if (direct) {
+      onLocationChange(String(direct.lat), String(direct.lon));
+      setMapsLinkInput("");
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [latitude, longitude]);
 
-  async function runSearch() {
-    if (!searchQuery.trim()) return;
-    setSearching(true);
-    setSearchResults([]);
-    setSearchError(null);
+    if (!/^https?:\/\//i.test(text)) {
+      setLinkError('Couldn\'t find coordinates in that text. Paste a Google Maps link, or type "lat, lon" directly.');
+      return;
+    }
+
+    setResolving(true);
     try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(searchQuery)}`,
-        { headers: { Accept: "application/json" } }
-      );
-      if (!res.ok) throw new Error(`Search failed (${res.status})`);
-      const results = await res.json();
-      if (!results || results.length === 0) {
-        setSearchError("No matches found — try a different search, or click the map to drop a pin.");
+      const res = await fetch("/api/resolve-maps-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: text }),
+      });
+      const data = await res.json();
+      const resolved: { lat: number; lon: number } | null = data.finalUrl ? extractLatLon(data.finalUrl) : null;
+      if (resolved) {
+        onLocationChange(String(resolved.lat), String(resolved.lon));
+        setMapsLinkInput("");
+      } else {
+        setLinkError(
+          "Couldn't find coordinates in that link. Open it in Google Maps, make sure the pin is on the hotel, then copy the link again."
+        );
       }
-      setSearchResults(results ?? []);
     } catch {
-      setSearchError("Search is temporarily unavailable — click the map or drag the pin instead.");
+      setLinkError("Couldn't read that link. Try pasting the latitude/longitude directly instead.");
     }
-    setSearching(false);
+    setResolving(false);
   }
 
-  function pickSearchResult(r: { display_name: string; lat: string; lon: string }) {
-    const lat = Number(r.lat);
-    const lon = Number(r.lon);
-    if (mapRef.current && markerRef.current) {
-      markerRef.current.setLatLng([lat, lon]);
-      mapRef.current.setView([lat, lon], 16);
-    }
-    reportLocation(lat, lon);
-    setSearchResults([]);
-    setSearchQuery("");
-    setSearchError(null);
-  }
-
-  const hasCoords = !!latitude && !!longitude;
+  const hasCoords =
+    !!latitude && !!longitude && !Number.isNaN(Number(latitude)) && !Number.isNaN(Number(longitude));
   const directionsUrl = hasCoords
     ? `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`
     : null;
-
-  function useCurrentLocation() {
-    if (!navigator.geolocation) {
-      setSearchError("Your browser doesn't support geolocation.");
-      return;
-    }
-    setSearchError(null);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-        if (mapRef.current && markerRef.current) {
-          markerRef.current.setLatLng([lat, lon]);
-          mapRef.current.setView([lat, lon], 16);
-        }
-        reportLocation(lat, lon);
-      },
-      () => setSearchError("Couldn't get your current location — check location permissions."),
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  }
-
-  function handleManualCoordChange(newLat: string, newLon: string) {
-    const lat = Number(newLat);
-    const lon = Number(newLon);
-    if (newLat.trim() === "" || newLon.trim() === "" || Number.isNaN(lat) || Number.isNaN(lon)) {
-      return;
-    }
-    if (mapRef.current && markerRef.current) {
-      markerRef.current.setLatLng([lat, lon]);
-      mapRef.current.setView([lat, lon], Math.max(mapRef.current.getZoom(), 15));
-    }
-    reportLocation(lat, lon);
-  }
+  const previewSrc = hasCoords
+    ? `https://maps.google.com/maps?q=${latitude},${longitude}&z=15&output=embed`
+    : null;
 
   return (
     <div className="sm:col-span-2">
       <p className="text-xs text-gray-500 mb-1">
-        Pin the hotel&apos;s exact location — search, click the map, drag the marker, use your current
-        location, or type coordinates directly. This only sets the coordinates; type the Address above
-        separately.
+        Set the hotel&apos;s exact coordinates — paste a Google Maps link, or type latitude/longitude
+        directly. This only sets the coordinates; type the Address above separately.
       </p>
       <div className="flex gap-2 mb-2">
         <input
-          placeholder="Search for the hotel or its address"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Paste a Google Maps link (or type: lat, lon)"
+          value={mapsLinkInput}
+          onChange={(e) => setMapsLinkInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              runSearch();
+              handleUseMapsLink();
             }
           }}
           className="border border-gray-300 rounded-md px-3 py-2 text-sm flex-1"
         />
         <button
-          onClick={runSearch}
-          disabled={searching || !searchQuery.trim()}
+          type="button"
+          onClick={handleUseMapsLink}
+          disabled={resolving || !mapsLinkInput.trim()}
           className="text-xs border border-gray-300 rounded-md px-3 py-2 whitespace-nowrap disabled:opacity-50"
         >
-          {searching ? "Searching..." : "Search"}
-        </button>
-        <button
-          type="button"
-          onClick={useCurrentLocation}
-          className="text-xs border border-gray-300 rounded-md px-3 py-2 whitespace-nowrap"
-        >
-          Current location
+          {resolving ? "Reading link..." : "Use this"}
         </button>
       </div>
-      {searchError && <p className="text-xs text-red-500 mb-2">{searchError}</p>}
-      {searchResults.length > 0 && (
-        <div className="border border-gray-200 rounded-md mb-2 divide-y divide-gray-100 max-h-40 overflow-y-auto">
-          {searchResults.map((r, i) => (
-            <button
-              key={i}
-              onClick={() => pickSearchResult(r)}
-              className="block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50"
-            >
-              {r.display_name}
-            </button>
-          ))}
-        </div>
-      )}
-      <div ref={mapDivRef} className="w-full h-64 rounded-md border border-gray-300 bg-gray-50" />
-      <div className="grid grid-cols-2 gap-2 mt-2">
+      {linkError && <p className="text-xs text-red-500 mb-2">{linkError}</p>}
+      <div className="grid grid-cols-2 gap-2">
         <input
           type="text"
           inputMode="decimal"
           placeholder="Latitude"
           value={latitude}
-          onChange={(e) => handleManualCoordChange(e.target.value, longitude)}
+          onChange={(e) => onLocationChange(e.target.value, longitude)}
           className="border border-gray-300 rounded-md px-3 py-2 text-xs"
         />
         <input
@@ -1508,15 +1384,20 @@ function LocationPicker({
           inputMode="decimal"
           placeholder="Longitude"
           value={longitude}
-          onChange={(e) => handleManualCoordChange(latitude, e.target.value)}
+          onChange={(e) => onLocationChange(latitude, e.target.value)}
           className="border border-gray-300 rounded-md px-3 py-2 text-xs"
         />
       </div>
+      {previewSrc && (
+        <div className="mt-2 border border-gray-200 rounded-md overflow-hidden">
+          <iframe title="Location preview" src={previewSrc} className="w-full h-56 border-0" loading="lazy" />
+        </div>
+      )}
       <div className="flex items-center justify-between mt-1.5">
         <p className="text-[11px] text-gray-400">
           {hasCoords
             ? `${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`
-            : "No location pinned yet"}
+            : "No location set yet"}
         </p>
         {directionsUrl && (
           <a
@@ -1533,7 +1414,8 @@ function LocationPicker({
   );
 }
 
-  function Metric({ label, value }: { label: string; value: string }) {
+
+function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="bg-gray-50 rounded-lg p-3">
       <p className="text-xs text-gray-500 mb-1">{label}</p>
