@@ -1083,6 +1083,7 @@ function AdminDashboardInner() {
               <LocationPicker
                 latitude={hotelForm.latitude}
                 longitude={hotelForm.longitude}
+                address={hotelForm.address}
                 onLocationChange={(lat, lon) =>
                   setHotelForm({
                     ...hotelForm,
@@ -1271,10 +1272,12 @@ function LocationPicker({
   latitude,
   longitude,
   onLocationChange,
+  address,
 }: {
   latitude: string;
   longitude: string;
   onLocationChange: (lat: string, lon: string) => void;
+  address?: string;
 }) {
   const [mapsLinkInput, setMapsLinkInput] = useState("");
   const [resolving, setResolving] = useState(false);
@@ -1293,25 +1296,46 @@ function LocationPicker({
     return null;
   }
 
-  // Best-effort fallback for links that don't carry coordinates at all (e.g.
-  // Google's share.google short links, which often resolve to a Search
-  // results page rather than a Maps page). Geocodes a place name via the
-  // free OpenStreetMap Nominatim API and flags the result as approximate.
-  async function tryGeocode(query: string): Promise<boolean> {
-    const q = query.trim();
-    if (!q) return false;
+  async function geocodeOnce(q: string): Promise<{ lat: number; lon: number } | null> {
     try {
       const res = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`
       );
       const results = await res.json();
       if (Array.isArray(results) && results.length > 0 && results[0].lat && results[0].lon) {
-        onLocationChange(String(Number(results[0].lat)), String(Number(results[0].lon)));
-        setLinkNote(`Approximate location for "${q}" — check the pin below and adjust the coordinates if needed.`);
-        return true;
+        return { lat: Number(results[0].lat), lon: Number(results[0].lon) };
       }
     } catch {
-      // ignore, caller shows a generic error
+      // ignore, caller handles no-result case
+    }
+    return null;
+  }
+
+  // Best-effort fallback for links that don't carry coordinates at all (e.g.
+  // Google's share.google short links, which often resolve to a Search
+  // results page rather than a Maps page). Geocodes a place name via the
+  // free OpenStreetMap Nominatim API and flags the result as approximate.
+  // A business name alone (e.g. "Satguru Store") is often too generic and
+  // matches a different city entirely, so when the hotel's Address field is
+  // filled in, try combining name + address first for a much better match,
+  // and fall back to the address alone if the combined query has no hits.
+  async function tryGeocode(query: string): Promise<boolean> {
+    const q = query.trim();
+    const addr = (address || "").trim();
+    if (!q && !addr) return false;
+
+    const attempts: string[] = [];
+    if (q && addr) attempts.push(`${q}, ${addr}`);
+    if (q) attempts.push(q);
+    if (addr) attempts.push(addr);
+
+    for (const attempt of attempts) {
+      const hit = await geocodeOnce(attempt);
+      if (hit) {
+        onLocationChange(String(hit.lat), String(hit.lon));
+        setLinkNote(`Approximate location for "${attempt}" — check the pin below and adjust the coordinates if needed.`);
+        return true;
+      }
     }
     return false;
   }
