@@ -16,13 +16,35 @@ export default function AdminLogin() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
+      setLoading(false);
       setError(error.message);
       return;
     }
-    router.push("/admin/dashboard");
+
+    // If this account owns a hotel, go straight to the hotel dashboard.
+    const { data: hu } = await supabase
+      .from("hotel_users")
+      .select("id")
+      .eq("auth_user_id", data.user.id)
+      .maybeSingle();
+    setLoading(false);
+
+    if (hu) {
+      router.push("/admin/dashboard");
+      return;
+    }
+
+    // No hotel — if this is a platform admin, send them to super admin
+    // instead of the "set up your hotel" screen.
+    const { data: pa } = await supabase
+      .from("platform_admins")
+      .select("id")
+      .eq("auth_user_id", data.user.id)
+      .maybeSingle();
+
+    router.push(pa ? "/super-admin" : "/admin/dashboard");
   }
 
   return (
