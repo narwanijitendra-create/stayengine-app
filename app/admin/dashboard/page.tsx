@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { Booking, RoomType, Hotel, NearbyPoint } from "@/lib/types";
@@ -163,7 +163,6 @@ function AdminDashboardInner() {
   const [hotelSaveMsg, setHotelSaveMsg] = useState<string | null>(null);
   const [coverUploading, setCoverUploading] = useState(false);
   const [galleryUploading, setGalleryUploading] = useState(false);
-  const [geocoding, setGeocoding] = useState(false);
 
   // Personal admin profile
   const [meForm, setMeForm] = useState<{ full_name: string; phone: string } | null>(null);
@@ -465,25 +464,6 @@ function AdminDashboardInner() {
       .select()
       .single();
     if (data) setHotel(data);
-  }
-
-  async function geocodeAddress() {
-    if (!hotelForm?.address) return;
-    setGeocoding(true);
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(hotelForm.address)}`
-      );
-      const results = await res.json();
-      if (results && results[0]) {
-        setHotelForm((prev) =>
-          prev ? { ...prev, latitude: results[0].lat, longitude: results[0].lon } : prev
-        );
-      }
-    } catch {
-      // ignore - owner can still type coordinates manually
-    }
-    setGeocoding(false);
   }
 
   async function saveMyProfile() {
@@ -1066,27 +1046,18 @@ function AdminDashboardInner() {
                 onChange={(e) => setHotelForm({ ...hotelForm, address: e.target.value })}
                 className="border border-gray-300 rounded-md px-3 py-2 text-sm sm:col-span-2"
               />
-              <div className="sm:col-span-2 flex gap-2 items-center">
-                <input
-                  placeholder="Latitude"
-                  value={hotelForm.latitude}
-                  onChange={(e) => setHotelForm({ ...hotelForm, latitude: e.target.value })}
-                  className="border border-gray-300 rounded-md px-3 py-2 text-sm flex-1"
-                />
-                <input
-                  placeholder="Longitude"
-                  value={hotelForm.longitude}
-                  onChange={(e) => setHotelForm({ ...hotelForm, longitude: e.target.value })}
-                  className="border border-gray-300 rounded-md px-3 py-2 text-sm flex-1"
-                />
-                <button
-                  onClick={geocodeAddress}
-                  disabled={geocoding || !hotelForm.address}
-                  className="text-xs border border-gray-300 rounded-md px-2.5 py-2 whitespace-nowrap disabled:opacity-50"
-                >
-                  {geocoding ? "Finding..." : "Find from address"}
-                </button>
-              </div>
+              <LocationPicker
+                latitude={hotelForm.latitude}
+                longitude={hotelForm.longitude}
+                onLocationChange={(lat, lon, address) =>
+                  setHotelForm({
+                    ...hotelForm,
+                    latitude: lat,
+                    longitude: lon,
+                    ...(address ? { address } : {}),
+                  })
+                }
+              />
               <div className="sm:col-span-2 flex items-center gap-2">
                 <label className="text-xs text-gray-500">Theme color</label>
                 <input
@@ -1152,7 +1123,7 @@ function AdminDashboardInner() {
                 placeholder="Name"
                 value={nearbyForm.name}
                 onChange={(e) => setNearbyForm({ ...nearbyForm, name: e.target.value })}
-                className="border border-gray-300 rounded-md px-3 py-2 text-sm:col-span-2"
+                className="border border-gray-300 rounded-md px-3 py-2 text-sm sm:col-span-2"
               />
               <select
                 value={nearbyForm.category}
@@ -1260,6 +1231,210 @@ function AdminDashboardInner() {
         </div>
       )}
     </main>
+  );
+}
+
+function LocationPicker({
+  latitude,
+  longitude,
+  onLocationChange,
+}: {
+  latitude: string;
+  longitude: string;
+  onLocationChange: (lat: string, lon: string, address?: string) => void;
+}) {
+  const mapDivRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<any>(null);
+  const markerRef = useRef<any>(null);
+  const [leafletReady, setLeafletReady] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<
+    { display_name: string; lat: string; lon: string }[]
+  >([]);
+
+  // Load Leaflet (free, no API key) from a CDN once.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if ((window as any).L) {
+      setLeafletReady(true);
+      return;
+    }
+    const existing = document.getElementById("leaflet-js");
+    if (existing) {
+      existing.addEventListener("load", () => setLeafletReady(true));
+      return;
+    }
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+    document.head.appendChild(link);
+    const script = document.createElement("script");
+    script.id = "leaflet-js";
+    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    script.onload = () => setLeafletReady(true);
+    document.body.appendChild(script);
+  }, []);
+
+  async function reverseGeocodeAndReport(lat: number, lon: number) {
+    onLocationChange(String(lat), String(lon));
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`
+      );
+      const data = await res.json();
+      if (data?.display_name) {
+        onLocationChange(String(lat), String(lon), data.display_name);
+      }
+    } catch {
+      // ignore - the pin position is already saved even if the reverse lookup fails
+    }
+  }
+
+  // Initialize the map once Leaflet has loaded.
+  useEffect(() => {
+    if (!leafletReady || !mapDivRef.current || mapRef.current) return;
+    const L = (window as any).L;
+    delete L.Icon.Default.prototype._getIconUrl;
+    L.Icon.Default.mergeOptions({
+      iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+      iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+      shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+    });
+
+    const startLat = latitude ? Number(latitude) : 20.5937;
+    const startLon = longitude ? Number(longitude) : 78.9629;
+    const startZoom = latitude && longitude ? 15 : 4;
+
+    const map = L.map(mapDivRef.current).setView([startLat, startLon], startZoom);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap contributors",
+      maxZoom: 19,
+    }).addTo(map);
+
+    const marker = L.marker([startLat, startLon], { draggable: true }).addTo(map);
+    marker.on("dragend", () => {
+      const pos = marker.getLatLng();
+      reverseGeocodeAndReport(pos.lat, pos.lng);
+    });
+    map.on("click", (e: any) => {
+      marker.setLatLng(e.latlng);
+      reverseGeocodeAndReport(e.latlng.lat, e.latlng.lng);
+    });
+
+    mapRef.current = map;
+    markerRef.current = marker;
+
+    // The map can render at zero height if its tab was hidden on first paint.
+    setTimeout(() => map.invalidateSize(), 200);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leafletReady]);
+
+  // Keep the marker in sync if coordinates change from outside the map (e.g. on load).
+  useEffect(() => {
+    if (!mapRef.current || !markerRef.current || !latitude || !longitude) return;
+    const lat = Number(latitude);
+    const lon = Number(longitude);
+    if (Number.isNaN(lat) || Number.isNaN(lon)) return;
+    const current = markerRef.current.getLatLng();
+    if (Math.abs(current.lat - lat) > 1e-6 || Math.abs(current.lng - lon) > 1e-6) {
+      markerRef.current.setLatLng([lat, lon]);
+      mapRef.current.setView([lat, lon], Math.max(mapRef.current.getZoom(), 15));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latitude, longitude]);
+
+  async function runSearch() {
+    if (!searchQuery.trim()) return;
+    setSearching(true);
+    setSearchResults([]);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(searchQuery)}`
+      );
+      const results = await res.json();
+      setSearchResults(results ?? []);
+    } catch {
+      // ignore - the admin can still drop a pin manually
+    }
+    setSearching(false);
+  }
+
+  function pickSearchResult(r: { display_name: string; lat: string; lon: string }) {
+    const lat = Number(r.lat);
+    const lon = Number(r.lon);
+    if (mapRef.current && markerRef.current) {
+      markerRef.current.setLatLng([lat, lon]);
+      mapRef.current.setView([lat, lon], 16);
+    }
+    onLocationChange(r.lat, r.lon, r.display_name);
+    setSearchResults([]);
+    setSearchQuery(r.display_name);
+  }
+
+  const hasCoords = !!latitude && !!longitude;
+  const directionsUrl = hasCoords
+    ? `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`
+    : null;
+
+  return (
+    <div className="sm:col-span-2">
+      <p className="text-xs text-gray-500 mb-1">
+        Pin the hotel&apos;s exact location — search, click the map, or drag the marker
+      </p>
+      <div className="flex gap-2 mb-2">
+        <input
+          placeholder="Search for the hotel or its address"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              runSearch();
+            }
+          }}
+          className="border border-gray-300 rounded-md px-3 py-2 text-sm flex-1"
+        />
+        <button
+          onClick={runSearch}
+          disabled={searching || !searchQuery.trim()}
+          className="text-xs border border-gray-300 rounded-md px-3 py-2 whitespace-nowrap disabled:opacity-50"
+        >
+          {searching ? "Searching..." : "Search"}
+        </button>
+      </div>
+      {searchResults.length > 0 && (
+        <div className="border border-gray-200 rounded-md mb-2 divide-y divide-gray-100 max-h-40 overflow-y-auto">
+          {searchResults.map((r, i) => (
+            <button
+              key={i}
+              onClick={() => pickSearchResult(r)}
+              className="block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50"
+            >
+              {r.display_name}
+            </button>
+          ))}
+        </div>
+      )}
+      <div ref={mapDivRef} className="w-full h-64 rounded-md border border-gray-300 bg-gray-50" />
+      <div className="flex items-center justify-between mt-1.5">
+        <p className="text-[11px] text-gray-400">
+          {hasCoords
+            ? `${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`
+            : "No location pinned yet"}
+        </p>
+        {directionsUrl && (
+          <a
+            href={directionsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] underline text-gray-500"
+          >
+            Open in Google Maps
+          </a>
+        )}
+      </div>
+    </div>
   );
 }
 
