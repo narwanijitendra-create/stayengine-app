@@ -1311,23 +1311,46 @@ function LocationPicker({
     return null;
   }
 
+  // Nominatim (free OSM geocoder) chokes on parenthetical abbreviations like
+  // "(Raj)" and on obscure street/colony names that simply aren't mapped —
+  // it returns zero results for the whole string rather than a fuzzy match.
+  function cleanForGeocode(s: string): string {
+    return s.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  // Builds a list of address variants from most to least specific by
+  // dropping the leading (most specific, most likely unmapped) segment one
+  // at a time — e.g. "Nagina Bagh, Ajmer, India" -> "Ajmer, India" -> "India".
+  // This way an obscure street name doesn't sink the whole lookup; it falls
+  // back to whatever coarser part of the address Nominatim does recognize.
+  function addressFallbacks(addr: string): string[] {
+    const cleaned = cleanForGeocode(addr);
+    const parts = cleaned.split(",").map((p) => p.trim()).filter(Boolean);
+    const variants: string[] = [];
+    for (let i = 0; i < parts.length; i++) {
+      const remaining = parts.slice(i).join(", ");
+      if (remaining && !variants.includes(remaining)) variants.push(remaining);
+    }
+    return variants;
+  }
+
   // Best-effort fallback for links that don't carry coordinates at all (e.g.
   // Google's share.google short links, which often resolve to a Search
-  // results page rather than a Maps page). Geocodes a place name via the
-  // free OpenStreetMap Nominatim API and flags the result as approximate.
-  // A business name alone (e.g. "Satguru Store") is often too generic and
-  // matches a different city entirely, so when the hotel's Address field is
-  // filled in, try combining name + address first for a much better match,
-  // and fall back to the address alone if the combined query has no hits.
+  // results page rather than a Maps page). Geocodes via the free
+  // OpenStreetMap Nominatim API and flags the result as approximate. A
+  // business name alone (e.g. "Satguru Store") is often too generic and
+  // matches a same-named place in a different city entirely, so this tries
+  // the hotel's own Address field (and increasingly coarse trims of it)
+  // before ever falling back to the bare business name.
   async function tryGeocode(query: string): Promise<boolean> {
     const q = query.trim();
     const addr = (address || "").trim();
     if (!q && !addr) return false;
 
     const attempts: string[] = [];
-    if (q && addr) attempts.push(`${q}, ${addr}`);
+    if (q && addr) attempts.push(`${q}, ${cleanForGeocode(addr)}`);
+    if (addr) attempts.push(...addressFallbacks(addr));
     if (q) attempts.push(q);
-    if (addr) attempts.push(addr);
 
     for (const attempt of attempts) {
       const hit = await geocodeOnce(attempt);
