@@ -473,6 +473,7 @@ function LocationSection({ hotel, nearbyPoints }: { hotel: Hotel; nearbyPoints: 
   const mapSrc = hasCoords
     ? `https://www.openstreetmap.org/export/embed.html?bbox=${lon - delta}%2C${lat - delta}%2C${lon + delta}%2C${lat + delta}&layer=mapnik&marker=${lat}%2C${lon}`
     : null;
+  const directionsUrl = hasCoords ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}` : null;
 
   return (
     <div className="mt-10">
@@ -486,7 +487,19 @@ function LocationSection({ hotel, nearbyPoints }: { hotel: Hotel; nearbyPoints: 
               Map not available yet
             </div>
           )}
-          {hotel.address && <p className="text-xs text-gray-500 p-3">{hotel.address}</p>}
+          <div className="flex items-center justify-between p-3">
+            {hotel.address && <p className="text-xs text-gray-500">{hotel.address}</p>}
+            {directionsUrl && (
+              <a
+                href={directionsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium underline whitespace-nowrap ml-2"
+              >
+                Get directions
+              </a>
+            )}
+          </div>
         </div>
         {nearbyPoints && nearbyPoints.length > 0 && (
           <div className="border border-gray-200 rounded-2xl bg-white shadow-sm p-4">
@@ -495,7 +508,7 @@ function LocationSection({ hotel, nearbyPoints }: { hotel: Hotel; nearbyPoints: 
               {nearbyPoints.map((p) => (
                 <div key={p.id} className="flex items-center justify-between text-sm">
                   <span>
-                    {CATEGORY_ICONS[p.category ?? ""] ?? "�M"} {p.name}
+                    {CATEGORY_ICONS[p.category ?? ""] ?? "📍"} {p.name}
                   </span>
                   {p.distance_label && <span className="text-xs text-gray-400">{p.distance_label}</span>}
                 </div>
