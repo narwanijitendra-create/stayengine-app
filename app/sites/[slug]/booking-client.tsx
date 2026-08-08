@@ -469,14 +469,21 @@ function LocationSection({ hotel, nearbyPoints }: { hotel: Hotel; nearbyPoints: 
   const hasCoords = hotel.latitude != null && hotel.longitude != null;
   const lat = hotel.latitude ?? 0;
   const lon = hotel.longitude ?? 0;
-const mapSrc = hasCoords
-      ? `https://maps.google.com/maps?q=${lat},${lon}&z=15&output=embed`
-     : null;
+  const mapSrc = hasCoords
+    ? `https://maps.google.com/maps?q=${lat},${lon}&z=15&output=embed`
+    : null;
   const directionsUrl = hasCoords ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}` : null;
+
+  const whatsappDigits = hotel.whatsapp_number ? hotel.whatsapp_number.replace(/[^\d]/g, "") : null;
+  const whatsappUrl = whatsappDigits
+    ? `https://wa.me/${whatsappDigits}?text=${encodeURIComponent(`Hi, I have a question about ${hotel.name}.`)}`
+    : null;
+
+  const hasContact = hotel.contact_phone || hotel.contact_email || whatsappUrl;
 
   return (
     <div className="mt-10">
-      <h2 className="text-lg font-medium mb-3">Location &amp; nearby</h2>
+      <h2 className="text-lg font-medium mb-3">Location &amp; contact</h2>
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-sm">
           {mapSrc ? (
@@ -500,21 +507,52 @@ const mapSrc = hasCoords
             )}
           </div>
         </div>
-        {nearbyPoints && nearbyPoints.length > 0 && (
-          <div className="border border-gray-200 rounded-2xl bg-white shadow-sm p-4">
-            <p className="text-xs text-gray-500 mb-3">Nearby attractions &amp; points of interest</p>
-            <div className="space-y-2">
-              {nearbyPoints.map((p) => (
-                <div key={p.id} className="flex items-center justify-between text-sm">
-                  <span>
-                    {CATEGORY_ICONS[p.category ?? ""] ?? "📍"} {p.name}
-                  </span>
-                  {p.distance_label && <span className="text-xs text-gray-400">{p.distance_label}</span>}
-                </div>
-              ))}
+
+        <div className="flex flex-col gap-4">
+          {hasContact && (
+            <div className="border border-gray-200 rounded-2xl bg-white shadow-sm p-4">
+              <p className="text-xs text-gray-500 mb-3">Get in touch</p>
+              <div className="space-y-2 text-sm">
+                {hotel.contact_phone && (
+                  <a href={`tel:${hotel.contact_phone}`} className="flex items-center gap-2 hover:underline">
+                    📞 {hotel.contact_phone}
+                  </a>
+                )}
+                {hotel.contact_email && (
+                  <a href={`mailto:${hotel.contact_email}`} className="flex items-center gap-2 hover:underline">
+                    ✉️ {hotel.contact_email}
+                  </a>
+                )}
+              </div>
+              {whatsappUrl && (
+                <a
+                  href={whatsappUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 flex items-center justify-center gap-2 rounded-full bg-[#25D366] text-white text-sm font-medium px-4 py-2 hover:opacity-90"
+                >
+                  💬 Chat on WhatsApp
+                </a>
+              )}
             </div>
-          </div>
-        )}
+          )}
+
+          {nearbyPoints && nearbyPoints.length > 0 && (
+            <div className="border border-gray-200 rounded-2xl bg-white shadow-sm p-4">
+              <p className="text-xs text-gray-500 mb-3">Nearby attractions &amp; points of interest</p>
+              <div className="space-y-2">
+                {nearbyPoints.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between text-sm">
+                    <span>
+                      {CATEGORY_ICONS[p.category ?? ""] ?? "📍"} {p.name}
+                    </span>
+                    {p.distance_label && <span className="text-xs text-gray-400">{p.distance_label}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
