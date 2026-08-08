@@ -158,6 +158,9 @@ function AdminDashboardInner() {
     longitude: string;
     brand_color: string;
     amenities: string[];
+    contact_phone: string;
+    contact_email: string;
+    whatsapp_number: string;
   } | null>(null);
   const [hotelSaving, setHotelSaving] = useState(false);
   const [hotelSaveMsg, setHotelSaveMsg] = useState<string | null>(null);
@@ -223,6 +226,9 @@ function AdminDashboardInner() {
             longitude: targetHotel.longitude != null ? String(targetHotel.longitude) : "",
             brand_color: targetHotel.brand_color ?? "#1F4E5F",
             amenities: targetHotel.amenities ?? [],
+            contact_phone: targetHotel.contact_phone ?? "",
+            contact_email: targetHotel.contact_email ?? "",
+            whatsapp_number: targetHotel.whatsapp_number ?? "",
           });
 
           const [{ data: b }, { data: rt }, { data: np }] = await Promise.all([
@@ -265,6 +271,9 @@ function AdminDashboardInner() {
         longitude: huTyped.hotels.longitude != null ? String(huTyped.hotels.longitude) : "",
         brand_color: huTyped.hotels.brand_color ?? "#1F4E5F",
         amenities: huTyped.hotels.amenities ?? [],
+        contact_phone: huTyped.hotels.contact_phone ?? "",
+        contact_email: huTyped.hotels.contact_email ?? "",
+        whatsapp_number: huTyped.hotels.whatsapp_number ?? "",
       });
 
       const [{ data: b }, { data: rt }, { data: np }] = await Promise.all([
@@ -402,6 +411,9 @@ function AdminDashboardInner() {
       longitude: hotelForm.longitude ? Number(hotelForm.longitude) : null,
       brand_color: hotelForm.brand_color,
       amenities: hotelForm.amenities,
+      contact_phone: hotelForm.contact_phone.trim() || null,
+      contact_email: hotelForm.contact_email.trim() || null,
+      whatsapp_number: hotelForm.whatsapp_number.trim() || null,
     };
     const { data, error } = await supabase
       .from("hotels")
@@ -1046,6 +1058,28 @@ function AdminDashboardInner() {
                 onChange={(e) => setHotelForm({ ...hotelForm, address: e.target.value })}
                 className="border border-gray-300 rounded-md px-3 py-2 text-sm sm:col-span-2"
               />
+              <input
+                placeholder="Contact phone (shown to guests)"
+                value={hotelForm.contact_phone}
+                onChange={(e) => setHotelForm({ ...hotelForm, contact_phone: e.target.value })}
+                className="border border-gray-300 rounded-md px-3 py-2 text-sm"
+              />
+              <input
+                placeholder="Contact email (shown to guests)"
+                type="email"
+                value={hotelForm.contact_email}
+                onChange={(e) => setHotelForm({ ...hotelForm, contact_email: e.target.value })}
+                className="border border-gray-300 rounded-md px-3 py-2 text-sm"
+              />
+              <input
+                placeholder="WhatsApp number, e.g. +91 98765 43210"
+                value={hotelForm.whatsapp_number}
+                onChange={(e) => setHotelForm({ ...hotelForm, whatsapp_number: e.target.value })}
+                className="border border-gray-300 rounded-md px-3 py-2 text-sm sm:col-span-2"
+              />
+              <p className="text-xs text-gray-400 sm:col-span-2 -mt-2">
+                Include the country code for WhatsApp (e.g. +91 for India) so the chat link works correctly.
+              </p>
               <LocationPicker
                 latitude={hotelForm.latitude}
                 longitude={hotelForm.longitude}
