@@ -469,10 +469,9 @@ function LocationSection({ hotel, nearbyPoints }: { hotel: Hotel; nearbyPoints: 
   const hasCoords = hotel.latitude != null && hotel.longitude != null;
   const lat = hotel.latitude ?? 0;
   const lon = hotel.longitude ?? 0;
-  const delta = 0.012;
-  const mapSrc = hasCoords
-    ? `https://www.openstreetmap.org/export/embed.html?bbox=${lon - delta}%2C${lat - delta}%2C${lon + delta}%2C${lat + delta}&layer=mapnik&marker=${lat}%2C${lon}`
-    : null;
+const mapSrc = hasCoords
+      ? `https://maps.google.com/maps?q=${lat},${lon}&z=15&output=embed`
+     : null;
   const directionsUrl = hasCoords ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}` : null;
 
   return (
