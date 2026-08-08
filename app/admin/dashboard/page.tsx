@@ -1298,9 +1298,10 @@ function LocationPicker({
     const startZoom = latitude && longitude ? 15 : 4;
 
     const map = L.map(mapDivRef.current).setView([startLat, startLon], startZoom);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenStreetMap contributors",
-      maxZoom: 19,
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+      attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
+      maxZoom: 20,
+      subdomains: "abcd",
     }).addTo(map);
 
     const marker = L.marker([startLat, startLon], { draggable: true }).addTo(map);
@@ -1375,11 +1376,46 @@ function LocationPicker({
     ? `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`
     : null;
 
+  function useCurrentLocation() {
+    if (!navigator.geolocation) {
+      setSearchError("Your browser doesn't support geolocation.");
+      return;
+    }
+    setSearchError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        if (mapRef.current && markerRef.current) {
+          markerRef.current.setLatLng([lat, lon]);
+          mapRef.current.setView([lat, lon], 16);
+        }
+        reportLocation(lat, lon);
+      },
+      () => setSearchError("Couldn't get your current location â check location permissions."),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }
+
+  function handleManualCoordChange(newLat: string, newLon: string) {
+    const lat = Number(newLat);
+    const lon = Number(newLon);
+    if (newLat.trim() === "" || newLon.trim() === "" || Number.isNaN(lat) || Number.isNaN(lon)) {
+      return;
+    }
+    if (mapRef.current && markerRef.current) {
+      markerRef.current.setLatLng([lat, lon]);
+      mapRef.current.setView([lat, lon], Math.max(mapRef.current.getZoom(), 15));
+    }
+    reportLocation(lat, lon);
+  }
+
   return (
     <div className="sm:col-span-2">
       <p className="text-xs text-gray-500 mb-1">
-        Pin the hotel&apos;s exact location — search, click the map, or drag the marker. This only
-        sets the coordinates; type the Address above separately.
+        Pin the hotel&apos;s exact location â search, click the map, drag the marker, use your current
+        location, or type coordinates directly. This only sets the coordinates; type the Address above
+        separately.
       </p>
       <div className="flex gap-2 mb-2">
         <input
@@ -1401,8 +1437,15 @@ function LocationPicker({
         >
           {searching ? "Searching..." : "Search"}
         </button>
+        <button
+          type="button"
+          onClick={useCurrentLocation}
+          className="text-xs border border-gray-300 rounded-md px-3 py-2 whitespace-nowrap"
+        >
+          Current location
+        </button>
       </div>
-            {searchError && <p className="text-xs text-red-500 mb-2">{searchError}</p>}
+      {searchError && <p className="text-xs text-red-500 mb-2">{searchError}</p>}
       {searchResults.length > 0 && (
         <div className="border border-gray-200 rounded-md mb-2 divide-y divide-gray-100 max-h-40 overflow-y-auto">
           {searchResults.map((r, i) => (
@@ -1417,6 +1460,24 @@ function LocationPicker({
         </div>
       )}
       <div ref={mapDivRef} className="w-full h-64 rounded-md border border-gray-300 bg-gray-50" />
+      <div className="grid grid-cols-2 gap-2 mt-2">
+        <input
+          type="text"
+          inputMode="decimal"
+          placeholder="Latitude"
+          value={latitude}
+          onChange={(e) => handleManualCoordChange(e.target.value, longitude)}
+          className="border border-gray-300 rounded-md px-3 py-2 text-xs"
+        />
+        <input
+          type="text"
+          inputMode="decimal"
+          placeholder="Longitude"
+          value={longitude}
+          onChange={(e) => handleManualCoordChange(latitude, e.target.value)}
+          className="border border-gray-300 rounded-md px-3 py-2 text-xs"
+        />
+      </div>
       <div className="flex items-center justify-between mt-1.5">
         <p className="text-[11px] text-gray-400">
           {hasCoords
@@ -1434,22 +1495,11 @@ function LocationPicker({
           </a>
         )}
       </div>
-      {hasCoords && (       
-      <>
-          <p className="text-xs text-gray-500 mb-1">Google Maps preview (updates once you save)</p>
-          <iframe
-            title="Google Maps preview"
-            src={`https://maps.google.com/maps?q=${latitude},${longitude}&z=16&output=embed`}
-            className="w-full h-56 rounded-md border border-gray-300"
-            loading="lazy"
-          />
-        </>
-      )}
     </div>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+  function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="bg-gray-50 rounded-lg p-3">
       <p className="text-xs text-gray-500 mb-1">{label}</p>
