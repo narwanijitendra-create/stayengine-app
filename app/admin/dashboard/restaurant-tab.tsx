@@ -58,7 +58,6 @@ function MenuManager({ hotelId }: { hotelId: string }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [itemDragId, setItemDragId] = useState<string | null>(null);
 
   async function loadAll() {
     setLoading(true);
@@ -149,15 +148,13 @@ function MenuManager({ hotelId }: { hotelId: string }) {
     loadAll();
   }
 
-  function handleItemDrop(groupItems: MenuItem[], targetId: string) {
-    if (!itemDragId || itemDragId === targetId) return;
+  function moveItem(groupItems: MenuItem[], itemId: string, direction: "up" | "down") {
+    const idx = groupItems.findIndex((i) => i.id === itemId);
+    if (idx === -1) return;
+    const swapWith = direction === "up" ? idx - 1 : idx + 1;
+    if (swapWith < 0 || swapWith >= groupItems.length) return;
     const list = [...groupItems];
-    const fromIdx = list.findIndex((i) => i.id === itemDragId);
-    const toIdx = list.findIndex((i) => i.id === targetId);
-    if (fromIdx === -1 || toIdx === -1) return;
-    const [moved] = list.splice(fromIdx, 1);
-    list.splice(toIdx, 0, moved);
-    setItemDragId(null);
+    [list[idx], list[swapWith]] = [list[swapWith], list[idx]];
     persistItemOrder(list);
   }
 
@@ -266,16 +263,26 @@ function MenuManager({ hotelId }: { hotelId: string }) {
               {group.subcategory ? ` / ${group.subcategory.name}` : ""}
             </p>
             <div className="divide-y divide-gray-100 border border-gray-200 rounded-xl overflow-hidden">
-              {group.items.map((item) => (
-                <div
-                  key={item.id}
-                  draggable
-                  onDragStart={() => setItemDragId(item.id)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => handleItemDrop(group.items, item.id)}
-                  className="flex items-center gap-3 px-4 py-3"
-                >
-                  <span className="text-gray-300 cursor-grab select-none">⠿</span>
+              {group.items.map((item, idx) => (
+                <div key={item.id} className="flex items-center gap-3 px-4 py-3">
+                  <div className="flex flex-col shrink-0">
+                    <button
+                      onClick={() => moveItem(group.items, item.id, "up")}
+                      disabled={idx === 0}
+                      className="text-gray-400 hover:text-gray-700 disabled:opacity-20 leading-none text-[10px] px-0.5"
+                      aria-label="Move up"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      onClick={() => moveItem(group.items, item.id, "down")}
+                      disabled={idx === group.items.length - 1}
+                      className="text-gray-400 hover:text-gray-700 disabled:opacity-20 leading-none text-[10px] px-0.5"
+                      aria-label="Move down"
+                    >
+                      ▼
+                    </button>
+                  </div>
                   <div className="min-w-0 flex-1">
                     <p className={`text-sm font-medium ${!item.is_available ? "text-gray-400 line-through" : ""}`}>
                       {item.name}
@@ -324,7 +331,6 @@ function CategoryManager({
   const [newSubName, setNewSubName] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [dragId, setDragId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const topCats = categories.filter((c) => c.parent_id === null).sort((a, b) => a.sort_order - b.sort_order);
@@ -382,47 +388,55 @@ function CategoryManager({
     onChange();
   }
 
-  function handleDropTop(targetId: string) {
-    if (!dragId || dragId === targetId) return;
+  function moveTop(id: string, direction: "up" | "down") {
+    const idx = topCats.findIndex((c) => c.id === id);
+    if (idx === -1) return;
+    const swapWith = direction === "up" ? idx - 1 : idx + 1;
+    if (swapWith < 0 || swapWith >= topCats.length) return;
     const list = [...topCats];
-    const fromIdx = list.findIndex((c) => c.id === dragId);
-    const toIdx = list.findIndex((c) => c.id === targetId);
-    if (fromIdx === -1 || toIdx === -1) return;
-    const [moved] = list.splice(fromIdx, 1);
-    list.splice(toIdx, 0, moved);
-    setDragId(null);
+    [list[idx], list[swapWith]] = [list[swapWith], list[idx]];
     persistOrder(list);
   }
 
-  function handleDropSub(parentId: string, targetId: string) {
-    if (!dragId || dragId === targetId) return;
-    const list = [...subsOf(parentId)];
-    const fromIdx = list.findIndex((c) => c.id === dragId);
-    const toIdx = list.findIndex((c) => c.id === targetId);
-    if (fromIdx === -1 || toIdx === -1) return;
-    const [moved] = list.splice(fromIdx, 1);
-    list.splice(toIdx, 0, moved);
-    setDragId(null);
+  function moveSub(parentId: string, id: string, direction: "up" | "down") {
+    const subs = subsOf(parentId);
+    const idx = subs.findIndex((c) => c.id === id);
+    if (idx === -1) return;
+    const swapWith = direction === "up" ? idx - 1 : idx + 1;
+    if (swapWith < 0 || swapWith >= subs.length) return;
+    const list = [...subs];
+    [list[idx], list[swapWith]] = [list[swapWith], list[idx]];
     persistOrder(list);
   }
 
   return (
     <div className="border border-gray-200 rounded-xl p-4 mb-5">
       <p className="text-sm font-medium mb-1">Categories</p>
-      <p className="text-xs text-gray-400 mb-3">Drag ⠿ to reorder. Click a name to rename it.</p>
+      <p className="text-xs text-gray-400 mb-3">Use ▲▼ to reorder. Click a name to rename it.</p>
 
       {topCats.length > 0 && (
         <div className="space-y-2 mb-3">
-          {topCats.map((cat) => (
+          {topCats.map((cat, catIdx) => (
             <div key={cat.id}>
-              <div
-                draggable
-                onDragStart={() => setDragId(cat.id)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => handleDropTop(cat.id)}
-                className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2"
-              >
-                <span className="text-gray-300 cursor-grab select-none">⠿</span>
+              <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
+                <div className="flex flex-col shrink-0">
+                  <button
+                    onClick={() => moveTop(cat.id, "up")}
+                    disabled={catIdx === 0}
+                    className="text-gray-400 hover:text-gray-700 disabled:opacity-20 leading-none text-[10px] px-0.5"
+                    aria-label="Move up"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    onClick={() => moveTop(cat.id, "down")}
+                    disabled={catIdx === topCats.length - 1}
+                    className="text-gray-400 hover:text-gray-700 disabled:opacity-20 leading-none text-[10px] px-0.5"
+                    aria-label="Move down"
+                  >
+                    ▼
+                  </button>
+                </div>
                 {renamingId === cat.id ? (
                   <input
                     autoFocus
@@ -455,16 +469,29 @@ function CategoryManager({
               </div>
 
               <div className="ml-6 mt-1 space-y-1">
-                {subsOf(cat.id).map((sub) => (
+                {subsOf(cat.id).map((sub, subIdx) => (
                   <div
                     key={sub.id}
-                    draggable
-                    onDragStart={() => setDragId(sub.id)}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => handleDropSub(cat.id, sub.id)}
                     className="flex items-center gap-2 bg-white border border-gray-100 rounded-lg px-3 py-1.5"
                   >
-                    <span className="text-gray-300 cursor-grab select-none">⠿</span>
+                    <div className="flex flex-col shrink-0">
+                      <button
+                        onClick={() => moveSub(cat.id, sub.id, "up")}
+                        disabled={subIdx === 0}
+                        className="text-gray-400 hover:text-gray-700 disabled:opacity-20 leading-none text-[9px] px-0.5"
+                        aria-label="Move up"
+                      >
+                        ▲
+                      </button>
+                      <button
+                        onClick={() => moveSub(cat.id, sub.id, "down")}
+                        disabled={subIdx === subsOf(cat.id).length - 1}
+                        className="text-gray-400 hover:text-gray-700 disabled:opacity-20 leading-none text-[9px] px-0.5"
+                        aria-label="Move down"
+                      >
+                        ▼
+                      </button>
+                    </div>
                     {renamingId === sub.id ? (
                       <input
                         autoFocus
