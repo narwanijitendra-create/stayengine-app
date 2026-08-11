@@ -48,9 +48,16 @@ export default async function HotelSitePage({ params }: { params: { slug: string
   const todayStr = new Date().toISOString().slice(0, 10);
   const horizonStr = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
 
-  const [{ data: roomTypes }, { data: nearbyPoints }, fxRates] = await Promise.all([
+  const [{ data: roomTypes }, { data: nearbyPoints }, { data: menuItems }, fxRates] = await Promise.all([
     supabase.from("room_types").select("*").eq("hotel_id", hotel.id).order("sort_order"),
     supabase.from("nearby_points").select("*").eq("hotel_id", hotel.id).order("sort_order"),
+    supabase
+      .from("menu_items")
+      .select("*")
+      .eq("hotel_id", hotel.id)
+      .eq("is_available", true)
+      .order("category")
+      .order("sort_order"),
     getFxRates(hotel.currency || "USD"),
   ]);
 
@@ -71,6 +78,7 @@ export default async function HotelSitePage({ params }: { params: { slug: string
       nearbyPoints={nearbyPoints ?? []}
       inventory={inventory ?? []}
       fxRates={fxRates}
+      menuItems={menuItems ?? []}
     />
   );
 }
