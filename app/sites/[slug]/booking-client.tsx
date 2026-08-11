@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { createBooking } from "./actions";
 import type { Hotel, RoomType, NearbyPoint, InventoryDay, MenuItem } from "@/lib/types";
-import RestaurantSection from "./restaurant-section";
 
 function nightsBetween(checkIn: string, checkOut: string) {
   const a = new Date(checkIn).getTime();
@@ -358,7 +358,23 @@ export default function BookingClient({
             </div>
 
             {!embedded && menuItems && menuItems.length > 0 && (
-              <RestaurantSection hotel={hotel} menuItems={menuItems} />
+              <div className="mt-10">
+                <h2 className="text-lg font-medium mb-3">Restaurant</h2>
+                <Link
+                  href={`/sites/${hotel.slug}/restaurant`}
+                  className="flex items-center justify-between border border-gray-200 rounded-2xl bg-white shadow-sm p-5 hover:shadow-md transition-shadow"
+                >
+                  <div>
+                    <p className="text-sm font-medium">Order food or book a table</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Browse the menu by category, order room service or delivery, or reserve a table
+                    </p>
+                  </div>
+                  <span className="text-sm font-medium whitespace-nowrap ml-4" style={{ color: accent }}>
+                    View menu →
+                  </span>
+                </Link>
+              </div>
             )}
 
             {!embedded &&
