@@ -2,11 +2,20 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFoodOrder, createTableReservation } from "./actions";
-import type { Hotel, MenuItem } from "@/lib/types";
+import type { Hotel, MenuItem, MenuCategory } from "@/lib/types";
+import { buildMenuGroups } from "@/lib/menu";
 
 type CartLine = { menuItemId: string; name: string; price: number; qty: number };
 
-export default function RestaurantSection({ hotel, menuItems }: { hotel: Hotel; menuItems: MenuItem[] }) {
+export default function RestaurantSection({
+  hotel,
+  menuItems,
+  categories: menuCategories,
+}: {
+  hotel: Hotel;
+  menuItems: MenuItem[];
+  categories: MenuCategory[];
+}) {
   const accent = hotel.brand_color || "#1F4E5F";
 
   const [view, setView] = useState<"menu" | "table">("menu");
@@ -36,24 +45,28 @@ export default function RestaurantSection({ hotel, menuItems }: { hotel: Hotel; 
   const [resError, setResError] = useState<string | null>(null);
 
   const available = useMemo(() => menuItems.filter((m) => m.is_available), [menuItems]);
-  const grouped = useMemo(() => {
-    const acc: Record<string, MenuItem[]> = {};
-    for (const item of available) {
-      acc[item.category] = acc[item.category] || [];
-      acc[item.category].push(item);
+  const menuGroups = useMemo(() => buildMenuGroups(available, menuCategories), [available, menuCategories]);
+  // Unique top-level categories, in the order buildMenuGroups already sorted them (by sort_order).
+  const topCats = useMemo(() => {
+    const seen = new Set<string>();
+    const list: MenuCategory[] = [];
+    for (const g of menuGroups) {
+      if (!seen.has(g.category.id)) {
+        seen.add(g.category.id);
+        list.push(g.category);
+      }
     }
-    return acc;
-  }, [available]);
-  const categories = useMemo(() => Object.keys(grouped), [grouped]);
+    return list;
+  }, [menuGroups]);
 
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
-    if (categories.length && !activeCategory) setActiveCategory(categories[0]);
-  }, [categories, activeCategory]);
+    if (topCats.length && !activeCategory) setActiveCategory(topCats[0].id);
+  }, [topCats, activeCategory]);
 
   useEffect(() => {
-    if (view !== "menu" || categories.length < 2) return;
+    if (view !== "menu" || topCats.length < 2) return;
     const observer = new IntersectionObserver(
       (entries) => {
         const visible = entries
@@ -61,8 +74,8 @@ export default function RestaurantSection({ hotel, menuItems }: { hotel: Hotel; 
           .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
         const top = visible[0];
         if (top) {
-          const cat = top.target.getAttribute("data-category");
-          if (cat) setActiveCategory(cat);
+          const catId = top.target.getAttribute("data-category-id");
+          if (catId) setActiveCategory(catId);
         }
       },
       { rootMargin: "-140px 0px -65% 0px", threshold: 0 }
@@ -70,11 +83,11 @@ export default function RestaurantSection({ hotel, menuItems }: { hotel: Hotel; 
     const nodes = Object.values(sectionRefs.current).filter((el): el is HTMLDivElement => !!el);
     nodes.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
-  }, [view, categories]);
+  }, [view, topCats]);
 
-  function scrollToCategory(cat: string) {
-    setActiveCategory(cat);
-    sectionRefs.current[cat]?.scrollIntoView({ behavior: "smooth", block: "start" });
+  function scrollToCategory(catId: string) {
+    setActiveCategory(catId);
+    sectionRefs.current[catId]?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   const cartLines = Object.values(cart).filter((l) => l.qty > 0);
@@ -213,71 +226,82 @@ export default function RestaurantSection({ hotel, menuItems }: { hotel: Hotel; 
       {view === "menu" && (
         <div className="lg:grid lg:grid-cols-[1fr_320px] lg:gap-8 lg:items-start">
           <div>
-            {categories.length > 1 && (
+            {topCats.length > 1 && (
               <div className="sticky top-0 z-10 -mx-1 mb-6 bg-stone-50/95 backdrop-blur px-1 py-2 flex gap-2 overflow-x-auto">
-                {categories.map((cat) => (
+                {topCats.map((cat) => (
                   <button
-                    key={cat}
-                    onClick={() => scrollToCategory(cat)}
+                    key={cat.id}
+                    onClick={() => scrollToCategory(cat.id)}
                     className={`flex-shrink-0 text-xs px-3.5 py-1.5 rounded-full border transition-colors ${
-                      activeCategory === cat
+                      activeCategory === cat.id
                         ? "text-white border-transparent"
                         : "border-gray-200 text-gray-600 bg-white hover:border-gray-300"
                     }`}
-                    style={activeCategory === cat ? { background: accent } : undefined}
+                    style={activeCategory === cat.id ? { background: accent } : undefined}
                   >
-                    {cat}
+                    {cat.name}
                   </button>
                 ))}
               </div>
             )}
 
-            {categories.map((category) => (
+            {topCats.map((topCat) => (
               <div
-                key={category}
+                key={topCat.id}
                 ref={(el) => {
-                  sectionRefs.current[category] = el;
+                  sectionRefs.current[topCat.id] = el;
                 }}
-                data-category={category}
+                data-category-id={topCat.id}
                 className="mb-8 scroll-mt-24"
               >
-                <p className="text-xs uppercase tracking-wide text-gray-400 mb-3 font-medium">{category}</p>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  {grouped[category].map((item) => {
-                    const qty = qtyFor(item.id);
-                    return (
-                      <div
-                        key={item.id}
-                        className="border border-gray-200 rounded-2xl bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-                      >
-                        {item.photo_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={item.photo_url} alt={item.name} className="h-36 w-full object-cover" />
-                        ) : (
-                          <div
-                            className="h-16 flex items-center justify-center text-2xl"
-                            style={{ background: accent + "14" }}
-                          >
-                            🍽️
-                          </div>
-                        )}
-                        <div className="p-4">
-                          <p className="text-sm font-medium leading-snug flex items-center gap-2">
-                            {item.is_veg !== null && (
-                              <span
-                                className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded-[3px] border flex-shrink-0 ${
-                                  item.is_veg ? "border-green-600" : "border-red-500"
-                                }`}
-                              >
-                                <span className={`w-1.5 h-1.5 rounded-full ${item.is_veg ? "bg-green-600" : "bg-red-500"}`} />
-                              </span>
-                            )}
-                            {item.name}
-                          </p>
-                          {item.description && (
-                            <p className="text-xs text-gray-400 mt-1 line-clamp-2">{item.description}</p>
-                          )}
-                          <div className="flex items-center justify-between mt-3">
+                <p className="text-sm font-semibold text-gray-700 mb-3">{topCat.name}</p>
+                {menuGroups
+                  .filter((g) => g.category.id === topCat.id)
+                  .map((group) => (
+                    <div key={group.subcategory?.id ?? "direct"} className="mb-5 last:mb-0">
+                      {group.subcategory && (
+                        <p className="text-xs uppercase tracking-wide text-gray-400 mb-3 font-medium">
+                          {group.subcategory.name}
+                        </p>
+                      )}
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        {group.items.map((item) => {
+                          const qty = qtyFor(item.id);
+                          return (
+                            <div
+                              key={item.id}
+                              className="border border-gray-200 rounded-2xl bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                            >
+                              {item.photo_url ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={item.photo_url} alt={item.name} className="h-36 w-full object-cover" />
+                              ) : (
+                                <div
+                                  className="h-16 flex items-center justify-center text-2xl"
+                                  style={{ background: accent + "14" }}
+                                >
+                                  🍽️
+                                </div>
+                              )}
+                              <div className="p-4">
+                                <p className="text-sm font-medium leading-snug flex items-center gap-2">
+                                  {item.is_veg !== null && (
+                                    <span
+                                      className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded-[3px] border flex-shrink-0 ${
+                                        item.is_veg ? "border-green-600" : "border-red-500"
+                                      }`}
+                                    >
+                                      <span
+                                        className={`w-1.5 h-1.5 rounded-full ${item.is_veg ? "bg-green-600" : "bg-red-500"}`}
+                                      />
+                                    </span>
+                                  )}
+                                  {item.name}
+                                </p>
+                                {item.description && (
+                                  <p className="text-xs text-gray-400 mt-1 line-clamp-2">{item.description}</p>
+                                )}
+                                <div className="flex items-center justify-between mt-3">
                             <span className="text-sm font-medium" style={{ color: accent }}>
                               {hotel.currency} {item.price}
                             </span>
@@ -309,9 +333,11 @@ export default function RestaurantSection({ hotel, menuItems }: { hotel: Hotel; 
                           </div>
                         </div>
                       </div>
-                    );
+                     );
                   })}
                 </div>
+              </div>
+                  ))}
               </div>
             ))}
           </div>
@@ -425,7 +451,7 @@ export default function RestaurantSection({ hotel, menuItems }: { hotel: Hotel; 
                     onChange={(e) => setResNotes(e.target.value)}
                     rows={2}
                     className="w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm"
-                />
+                  />
                 </div>
                 {resError && <p className="text-xs text-red-500 mt-3">{resError}</p>}
                 <button
