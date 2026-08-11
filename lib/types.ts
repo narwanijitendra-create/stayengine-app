@@ -76,3 +76,54 @@ export type Booking = {
   source: string;
   created_at: string;
 };
+
+export type MenuItem = {
+  id: string;
+  hotel_id: string;
+  category: string;
+  name: string;
+  description: string | null;
+  price: number;
+  photo_url: string | null;
+  is_veg: boolean | null;
+  is_available: boolean;
+  sort_order: number;
+  created_at: string;
+};
+
+export type TableReservation = {
+  id: string;
+  hotel_id: string;
+  guest_name: string;
+  phone: string;
+  email: string | null;
+  reservation_date: string;
+  reservation_time: string;
+  party_size: number;
+  notes: string | null;
+  status: "pending" | "confirmed" | "cancelled" | "completed";
+  created_at: string;
+};
+
+export type FoodOrderItem = {
+  menu_item_id: string;
+  name: string;
+  price: number;
+  qty: number;
+};
+
+export type FoodOrder = {
+  id: string;
+  hotel_id: string;
+  order_type: "room_service" | "dine_in" | "delivery";
+  customer_name: string;
+  phone: string;
+  room_number: string | null;
+  delivery_address: string | null;
+  items: FoodOrderItem[];
+  total_amount: number;
+  currency: string;
+  status: "pending" | "confirmed" | "preparing" | "out_for_delivery" | "delivered" | "cancelled";
+  notes: string | null;
+  created_at: string;
+};
