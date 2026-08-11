@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { createBooking } from "./actions";
-import type { Hotel, RoomType, NearbyPoint, InventoryDay } from "@/lib/types";
+import type { Hotel, RoomType, NearbyPoint, InventoryDay, MenuItem } from "@/lib/types";
+import RestaurantSection from "./restaurant-section";
 
 function nightsBetween(checkIn: string, checkOut: string) {
   const a = new Date(checkIn).getTime();
@@ -59,6 +60,7 @@ export default function BookingClient({
   nearbyPoints = [],
   inventory = [],
   fxRates = {},
+  menuItems = [],
   embedded = false,
 }: {
   hotel: Hotel;
@@ -67,6 +69,7 @@ export default function BookingClient({
   inventory?: InventoryDay[];
   fxRates?: Record<string, number>;
   embedded?: boolean;
+  menuItems?: MenuItem[];
 }) {
   const today = new Date();
   const inDefault = today.toISOString().slice(0, 10);
@@ -353,6 +356,10 @@ export default function BookingClient({
                 );
               })}
             </div>
+
+            {!embedded && menuItems && menuItems.length > 0 && (
+              <RestaurantSection hotel={hotel} menuItems={menuItems} />
+            )}
 
             {!embedded &&
               (hotel.address ||
