@@ -25,6 +25,12 @@ export default async function RestaurantPage({ params }: { params: { slug: strin
     .order("category")
     .order("sort_order");
 
+  const { data: menuCategories } = await supabase
+    .from("menu_categories")
+    .select("*")
+    .eq("hotel_id", hotel.id)
+    .order("sort_order");
+
   return (
     <div className="bg-stone-50 min-h-screen">
       <div className="max-w-5xl mx-auto px-6 py-10">
@@ -33,7 +39,7 @@ export default async function RestaurantPage({ params }: { params: { slug: strin
         </Link>
 
         {menuItems && menuItems.length > 0 ? (
-          <RestaurantSection hotel={hotel} menuItems={menuItems} />
+          <RestaurantSection hotel={hotel} menuItems={menuItems} categories={menuCategories ?? []} />
         ) : (
           <p className="text-sm text-gray-400 mt-10">The restaurant menu isn&apos;t available right now.</p>
         )}
