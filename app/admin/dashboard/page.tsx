@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { Booking, RoomType, Hotel, NearbyPoint } from "@/lib/types";
+import RestaurantTab from "./restaurant-tab";
 
 type HotelUserRow = {
   id: string;
@@ -136,7 +137,7 @@ function AdminDashboardInner() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([]);
   const [nearbyPoints, setNearbyPoints] = useState<NearbyPoint[]>([]);
-  const [tab, setTab] = useState<"overview" | "bookings" | "rooms" | "profile">("overview");
+  const [tab, setTab] = useState<"overview" | "bookings" | "rooms" | "restaurant" | "profile">("overview");
   const [justArrived, setJustArrived] = useState<Set<string>>(new Set());
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [noHotelYet, setNoHotelYet] = useState(false);
@@ -756,7 +757,7 @@ function AdminDashboardInner() {
       )}
 
       <div className="flex gap-2 mb-6 flex-wrap">
-        {(["overview", "bookings", "rooms", "profile"] as const).map((t) => (
+        {(["overview", "bookings", "rooms", "restaurant", "profile"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -1264,6 +1265,8 @@ function AdminDashboardInner() {
           )}
         </div>
       )}
+      {tab === "restaurant" && <RestaurantTab hotelId={hotel.id} />}
+
     </main>
   );
 }
