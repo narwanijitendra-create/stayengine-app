@@ -77,10 +77,20 @@ export type Booking = {
   created_at: string;
 };
 
+export type MenuCategory = {
+  id: string;
+  hotel_id: string;
+  name: string;
+  parent_id: string | null;
+  sort_order: number;
+  created_at: string;
+};
+
 export type MenuItem = {
   id: string;
   hotel_id: string;
   category: string;
+  category_id: string | null;
   name: string;
   description: string | null;
   price: number;
