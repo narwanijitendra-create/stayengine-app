@@ -46,3 +46,81 @@ export async function createBooking(input: CreateBookingInput) {
 
   return { booking: data[0] };
 }
+
+export type FoodOrderItemInput = {
+  menu_item_id: string;
+  name: string;
+  price: number;
+  qty: number;
+};
+
+export type CreateFoodOrderInput = {
+  hotelId: string;
+  orderType: "room_service" | "dine_in" | "delivery";
+  customerName: string;
+  phone: string;
+  roomNumber?: string;
+  deliveryAddress?: string;
+  items: FoodOrderItemInput[];
+  totalAmount: number;
+  currency: string;
+  notes?: string;
+};
+
+export async function createFoodOrder(input: CreateFoodOrderInput) {
+  const supabase = createServerClient();
+
+  // Same pattern as create_guest_booking: insert happens through a
+  // SECURITY DEFINER RPC so anonymous guests/outside customers can place an
+  // order without needing a public SELECT policy on food_orders.
+  const { data, error } = await supabase.rpc("create_food_order", {
+    p_hotel_id: input.hotelId,
+    p_order_type: input.orderType,
+    p_customer_name: input.customerName,
+    p_phone: input.phone,
+    p_room_number: input.roomNumber ?? null,
+    p_delivery_address: input.deliveryAddress ?? null,
+    p_items: input.items,
+    p_total_amount: input.totalAmount,
+    p_currency: input.currency,
+    p_notes: input.notes ?? null,
+  });
+
+  if (error || !data || !data[0]) {
+    return { error: error?.message ?? "Could not place order" };
+  }
+
+  return { order: data[0] };
+}
+
+export type CreateTableReservationInput = {
+  hotelId: string;
+  guestName: string;
+  phone: string;
+  email?: string;
+  reservationDate: string;
+  reservationTime: string;
+  partySize: number;
+  notes?: string;
+};
+
+export async function createTableReservation(input: CreateTableReservationInput) {
+  const supabase = createServerClient();
+
+  const { data, error } = await supabase.rpc("create_table_reservation", {
+    p_hotel_id: input.hotelId,
+    p_guest_name: input.guestName,
+    p_phone: input.phone,
+    p_email: input.email ?? null,
+    p_reservation_date: input.reservationDate,
+    p_reservation_time: input.reservationTime,
+    p_party_size: input.partySize,
+    p_notes: input.notes ?? null,
+  });
+
+  if (error || !data || !data[0]) {
+    return { error: error?.message ?? "Could not book a table" };
+  }
+
+  return { reservation: data[0] };
+}
