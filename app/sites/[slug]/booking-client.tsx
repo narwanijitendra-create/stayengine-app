@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { createBooking } from "./actions";
-import type { Hotel, RoomType, NearbyPoint, InventoryDay, MenuItem } from "@/lib/types";
+import type { Hotel, RoomType, NearbyPoint, InventoryDay, MenuItem, MenuCategory } from "@/lib/types";
+import RestaurantSection from "./restaurant-section";
 
 function nightsBetween(checkIn: string, checkOut: string) {
   const a = new Date(checkIn).getTime();
@@ -63,6 +64,8 @@ export default function BookingClient({
   embedded = false,
   menuItems = [],
   bookingEnabled = true,
+  restaurantEnabled = true,
+  categories = [],
 }: {
   hotel: Hotel;
   roomTypes: RoomType[];
@@ -72,7 +75,10 @@ export default function BookingClient({
   embedded?: boolean;
   menuItems?: MenuItem[];
   bookingEnabled?: boolean;
+  restaurantEnabled?: boolean;
+  categories?: MenuCategory[];
 }) {
+  const restaurantOnly = !bookingEnabled && restaurantEnabled;
   const today = new Date();
   const inDefault = today.toISOString().slice(0, 10);
   const outDefault = addDays(inDefault, 2);
@@ -169,7 +175,7 @@ export default function BookingClient({
   return (
     <div className={embedded ? "p-4 bg-stone-50" : "bg-stone-50 min-h-screen"}>
       {!embedded && step === "search" && (
-        <Hero hotel={hotel} accent={accent} />
+        <Hero hotel={hotel} accent={accent} restaurantOnly={restaurantOnly} />
       )}
 
       <div className={embedded ? "" : "max-w-5xl mx-auto px-6 -mt-10 relative pb-16"}>
@@ -183,7 +189,7 @@ export default function BookingClient({
             </div>
             <div>
               <p className="font-medium">{hotel.name}</p>
-              <p className="text-xs text-gray-500">Direct booking</p>
+              <p className="text-xs text-gray-500">{restaurantOnly ? "Order online" : "Direct booking"}</p>
             </div>
           </div>
         )}
@@ -217,10 +223,22 @@ export default function BookingClient({
               </div>
             )}
 
-            {!bookingEnabled && (
+            {restaurantOnly && (
+              menuItems.length > 0 ? (
+                <div className="mt-2 mb-10">
+                  <RestaurantSection hotel={hotel} menuItems={menuItems} categories={categories} />
+                </div>
+              ) : (
+                <div className="border border-gray-200 rounded-2xl bg-white shadow-sm p-5 mb-6 text-sm text-gray-500">
+                  We&apos;re setting up online ordering for this menu — please check back soon or contact us
+                  directly.
+                </div>
+              )
+            )}
+
+            {!bookingEnabled && !restaurantEnabled && (
               <div className="border border-gray-200 rounded-2xl bg-white shadow-sm p-5 mb-6 text-sm text-gray-500">
-                Online room booking isn&apos;t available for this property right now. Please contact us directly to
-                book a stay.
+                This page isn&apos;t accepting online bookings or orders right now. Please contact us directly.
               </div>
             )}
 
@@ -370,7 +388,7 @@ export default function BookingClient({
             </>
             )}
 
-            {!embedded && menuItems && menuItems.length > 0 && (
+            {!embedded && !restaurantOnly && menuItems && menuItems.length > 0 && (
               <div className="mt-10">
                 <h2 className="text-lg font-medium mb-3">Restaurant</h2>
                 <Link
@@ -476,7 +494,7 @@ export default function BookingClient({
   );
 }
 
-function Hero({ hotel, accent }: { hotel: Hotel; accent: string }) {
+function Hero({ hotel, accent, restaurantOnly = false }: { hotel: Hotel; accent: string; restaurantOnly?: boolean }) {
   return (
     <div
       className="relative h-72 sm:h-96 w-full overflow-hidden"
@@ -496,7 +514,9 @@ function Hero({ hotel, accent }: { hotel: Hotel; accent: string }) {
           >
             {hotel.name.slice(0, 1)}
           </div>
-          <span className="text-xs uppercase tracking-wide text-white/80">Direct booking</span>
+          <span className="text-xs uppercase tracking-wide text-white/80">
+            {restaurantOnly ? "Order online" : "Direct booking"}
+          </span>
         </div>
         <h1 className="text-3xl sm:text-4xl font-semibold">{hotel.name}</h1>
         {hotel.tagline && <p className="text-sm sm:text-base text-white/90 mt-1">{hotel.tagline}</p>}
