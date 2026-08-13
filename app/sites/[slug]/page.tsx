@@ -48,18 +48,20 @@ export default async function HotelSitePage({ params }: { params: { slug: string
   const todayStr = new Date().toISOString().slice(0, 10);
   const horizonStr = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
 
-  const [{ data: roomTypes }, { data: nearbyPoints }, { data: menuItems }, fxRates] = await Promise.all([
-    supabase.from("room_types").select("*").eq("hotel_id", hotel.id).order("sort_order"),
-    supabase.from("nearby_points").select("*").eq("hotel_id", hotel.id).order("sort_order"),
-    supabase
-      .from("menu_items")
-      .select("*")
-      .eq("hotel_id", hotel.id)
-      .eq("is_available", true)
-      .order("category")
-      .order("sort_order"),
-    getFxRates(hotel.currency || "USD"),
-  ]);
+  const [{ data: roomTypes }, { data: nearbyPoints }, { data: menuItems }, { data: menuCategories }, fxRates] =
+    await Promise.all([
+      supabase.from("room_types").select("*").eq("hotel_id", hotel.id).order("sort_order"),
+      supabase.from("nearby_points").select("*").eq("hotel_id", hotel.id).order("sort_order"),
+      supabase
+        .from("menu_items")
+        .select("*")
+        .eq("hotel_id", hotel.id)
+        .eq("is_available", true)
+        .order("category")
+        .order("sort_order"),
+      supabase.from("menu_categories").select("*").eq("hotel_id", hotel.id).order("sort_order"),
+      getFxRates(hotel.currency || "USD"),
+    ]);
 
   const roomTypeIds = (roomTypes ?? []).map((rt) => rt.id);
   const { data: inventory } = roomTypeIds.length
@@ -79,7 +81,9 @@ export default async function HotelSitePage({ params }: { params: { slug: string
       inventory={inventory ?? []}
       fxRates={fxRates}
       menuItems={hotel.restaurant_enabled ? menuItems ?? [] : []}
+      categories={hotel.restaurant_enabled ? menuCategories ?? [] : []}
       bookingEnabled={hotel.booking_enabled}
+      restaurantEnabled={hotel.restaurant_enabled}
     />
   );
 }
