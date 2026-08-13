@@ -17,6 +17,19 @@ export default async function RestaurantPage({ params }: { params: { slug: strin
 
   if (!hotel) return notFound();
 
+  if (!hotel.restaurant_enabled) {
+    return (
+      <div className="bg-stone-50 min-h-screen">
+        <div className="max-w-5xl mx-auto px-6 py-10">
+          <Link href={`/sites/${hotel.slug}`} className="text-xs text-gray-500 hover:underline mb-6 inline-block">
+            ← Back to {hotel.name}
+          </Link>
+          <p className="text-sm text-gray-400 mt-10">The restaurant isn&apos;t available for this property.</p>
+        </div>
+      </div>
+    );
+  }
+
   const { data: menuItems } = await supabase
     .from("menu_items")
     .select("*")
