@@ -60,8 +60,9 @@ export default function BookingClient({
   nearbyPoints = [],
   inventory = [],
   fxRates = {},
-  menuItems = [],
   embedded = false,
+  menuItems = [],
+  bookingEnabled = true,
 }: {
   hotel: Hotel;
   roomTypes: RoomType[];
@@ -70,6 +71,7 @@ export default function BookingClient({
   fxRates?: Record<string, number>;
   embedded?: boolean;
   menuItems?: MenuItem[];
+  bookingEnabled?: boolean;
 }) {
   const today = new Date();
   const inDefault = today.toISOString().slice(0, 10);
@@ -215,6 +217,15 @@ export default function BookingClient({
               </div>
             )}
 
+            {!bookingEnabled && (
+              <div className="border border-gray-200 rounded-2xl bg-white shadow-sm p-5 mb-6 text-sm text-gray-500">
+                Online room booking isn&apos;t available for this property right now. Please contact us directly to
+                book a stay.
+              </div>
+            )}
+
+            {bookingEnabled && (
+            <>
             <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 mb-3">
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                 <div>
@@ -356,6 +367,8 @@ export default function BookingClient({
                 );
               })}
             </div>
+            </>
+            )}
 
             {!embedded && menuItems && menuItems.length > 0 && (
               <div className="mt-10">
