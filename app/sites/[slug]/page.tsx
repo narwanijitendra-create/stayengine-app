@@ -78,7 +78,8 @@ export default async function HotelSitePage({ params }: { params: { slug: string
       nearbyPoints={nearbyPoints ?? []}
       inventory={inventory ?? []}
       fxRates={fxRates}
-      menuItems={menuItems ?? []}
+      menuItems={hotel.restaurant_enabled ? menuItems ?? [] : []}
+      bookingEnabled={hotel.booking_enabled}
     />
   );
 }
