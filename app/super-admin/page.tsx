@@ -89,6 +89,13 @@ export default function SuperAdmin() {
     setBusyId(null);
   }
 
+  async function setModule(id: string, field: "booking_enabled" | "restaurant_enabled", value: boolean) {
+    setBusyId(id);
+    await supabase.from("hotels").update({ [field]: value }).eq("id", id);
+    await loadAll();
+    setBusyId(null);
+  }
+
   async function createHotel(e: React.FormEvent) {
     e.preventDefault();
     setCreateError(null);
@@ -225,6 +232,7 @@ export default function SuperAdmin() {
                 <th className="text-left px-4 py-2 font-normal">URL</th>
                 <th className="text-left px-4 py-2 font-normal">Plan</th>
                 <th className="text-left px-4 py-2 font-normal">Status</th>
+                <th className="text-left px-4 py-2 font-normal">Modules</th>
                 <th className="text-right px-4 py-2 font-normal">Actions</th>
               </tr>
             </thead>
@@ -240,6 +248,32 @@ export default function SuperAdmin() {
                     >
                       {h.status}
                     </span>
+                  </td>
+                  <td className="px-4 py-2">
+                    <div className="flex gap-1.5">
+                      <button
+                        disabled={busyId === h.id}
+                        onClick={() => setModule(h.id, "booking_enabled", !h.booking_enabled)}
+                        className={`text-[10px] rounded-full px-2 py-0.5 border disabled:opacity-50 ${
+                          h.booking_enabled
+                            ? "bg-green-50 text-green-800 border-green-200"
+                            : "bg-gray-50 text-gray-400 border-gray-200"
+                        }`}
+                      >
+                        Booking {h.booking_enabled ? "on" : "off"}
+                      </button>
+                      <button
+                        disabled={busyId === h.id}
+                        onClick={() => setModule(h.id, "restaurant_enabled", !h.restaurant_enabled)}
+                        className={`text-[10px] rounded-full px-2 py-0.5 border disabled:opacity-50 ${
+                          h.restaurant_enabled
+                            ? "bg-green-50 text-green-800 border-green-200"
+                            : "bg-gray-50 text-gray-400 border-gray-200"
+                        }`}
+                      >
+                        Restaurant {h.restaurant_enabled ? "on" : "off"}
+                      </button>
+                    </div>
                   </td>
                   <td className="px-4 py-2 text-right">
                     <a
