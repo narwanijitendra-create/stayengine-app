@@ -756,22 +756,44 @@ function AdminDashboardInner() {
         </div>
       )}
 
-      <div className="flex gap-2 mb-6 flex-wrap">
-        {(["overview", "bookings", "rooms", "restaurant", "profile"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`text-sm px-3 py-1.5 rounded-md border ${
-              tab === t ? "bg-gray-900 text-white border-gray-900" : "border-gray-300"
-            }`}
-          >
-            {t === "profile" ? "Hotel profile" : t[0].toUpperCase() + t.slice(1)}
-            {t === "bookings" && justArrived.size > 0 && (
-              <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-green-400 align-middle" />
-            )}
-          </button>
-        ))}
-      </div>
+      {(() => {
+        const availableTabs = (["overview", "bookings", "rooms", "restaurant", "profile"] as const).filter(
+          (t) => {
+            if ((t === "bookings" || t === "rooms") && !hotel.booking_enabled) return false;
+            if (t === "restaurant" && !hotel.restaurant_enabled) return false;
+            return true;
+          }
+        );
+        return (
+          <div className="flex gap-2 mb-6 flex-wrap">
+            {availableTabs.map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`text-sm px-3 py-1.5 rounded-md border ${
+                  tab === t ? "bg-gray-900 text-white border-gray-900" : "border-gray-300"
+                }`}
+              >
+                {t === "profile" ? "Hotel profile" : t[0].toUpperCase() + t.slice(1)}
+                {t === "bookings" && justArrived.size > 0 && (
+                  <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-green-400 align-middle" />
+                )}
+              </button>
+            ))}
+          </div>
+        );
+      })()}
+
+      {!hotel.booking_enabled && (tab === "bookings" || tab === "rooms") && (
+        <p className="text-sm text-gray-500 mb-4">
+          Hotel booking isn&apos;t enabled for this account. Contact StayEngine to activate it.
+        </p>
+      )}
+      {!hotel.restaurant_enabled && tab === "restaurant" && (
+        <p className="text-sm text-gray-500 mb-4">
+          The restaurant module isn&apos;t enabled for this account. Contact StayEngine to activate it.
+        </p>
+      )}
 
       {tab === "overview" && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -782,7 +804,7 @@ function AdminDashboardInner() {
         </div>
       )}
 
-      {tab === "bookings" && (
+      {tab === "bookings" && hotel.booking_enabled && (
         <div className="border border-gray-200 rounded-xl divide-y divide-gray-100">
           <div className="p-3 flex items-center gap-2 text-xs text-gray-400 bg-gray-50 rounded-t-xl">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400" />
@@ -818,7 +840,7 @@ function AdminDashboardInner() {
         </div>
       )}
 
-      {tab === "rooms" && (
+      {tab === "rooms" && hotel.booking_enabled && (
         <div>
           <div className="flex justify-end mb-3">
             <button
@@ -1265,7 +1287,7 @@ function AdminDashboardInner() {
           )}
         </div>
       )}
-      {tab === "restaurant" && <RestaurantTab hotelId={hotel.id} />}
+      {tab === "restaurant" && hotel.restaurant_enabled && <RestaurantTab hotelId={hotel.id} />}
 
     </main>
   );
