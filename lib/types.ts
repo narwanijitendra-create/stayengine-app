@@ -18,6 +18,8 @@ export type Hotel = {
   contact_phone: string | null;
   contact_email: string | null;
   whatsapp_number: string | null;
+  booking_enabled: boolean;
+  restaurant_enabled: boolean;
 };
 
 export type RoomType = {
