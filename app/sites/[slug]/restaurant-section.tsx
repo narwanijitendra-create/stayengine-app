@@ -18,12 +18,20 @@ export default function RestaurantSection({
 }) {
   const accent = hotel.brand_color || "#1F4E5F";
 
-  const [view, setView] = useState<"menu" | "table">("menu");
+  const reservationEnabled = hotel.table_reservation_enabled;
+  const anyOrderMode = hotel.room_service_enabled || hotel.delivery_enabled;
+
+  const [view, setView] = useState<"menu" | "table">(() => {
+    const hasMenuNow = menuItems.some((m) => m.is_available);
+    return anyOrderMode && hasMenuNow ? "menu" : "table";
+  });
   const [cart, setCart] = useState<Record<string, CartLine>>({});
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
 
-  const [orderType, setOrderType] = useState<"room_service" | "delivery">("room_service");
+  const [orderType, setOrderType] = useState<"room_service" | "delivery">(
+    hotel.room_service_enabled ? "room_service" : "delivery"
+  );
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
   const [roomNumber, setRoomNumber] = useState("");
@@ -45,6 +53,7 @@ export default function RestaurantSection({
   const [resError, setResError] = useState<string | null>(null);
 
   const available = useMemo(() => menuItems.filter((m) => m.is_available), [menuItems]);
+  const orderingEnabled = anyOrderMode && available.length > 0;
   const menuGroups = useMemo(() => buildMenuGroups(available, menuCategories), [available, menuCategories]);
   // Unique top-level categories, in the order buildMenuGroups already sorted them (by sort_order).
   const topCats = useMemo(() => {
@@ -106,6 +115,10 @@ export default function RestaurantSection({
 
   async function submitOrder() {
     setOrderError(null);
+    if (!hotel.room_service_enabled && !hotel.delivery_enabled) {
+      setOrderError("Online ordering isn't available for this restaurant right now.");
+      return;
+    }
     if (cartLines.length === 0) {
       setOrderError("Add at least one item to your order.");
       return;
@@ -147,6 +160,10 @@ export default function RestaurantSection({
 
   async function submitReservation() {
     setResError(null);
+    if (!reservationEnabled) {
+      setResError("Table reservations aren't available for this restaurant right now.");
+      return;
+    }
     if (!resName.trim() || !resPhone.trim() || !resDate || !resTime) {
       setResError("Name, phone, date and time are required.");
       return;
@@ -170,7 +187,7 @@ export default function RestaurantSection({
     setResResult(res.reservation);
   }
 
-  if (available.length === 0) return null;
+  if (!orderingEnabled && !reservationEnabled) return null;
 
   const cartPanelProps: CartPanelProps = {
     accent,
@@ -201,29 +218,37 @@ export default function RestaurantSection({
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-semibold">Restaurant</h1>
-        <p className="text-sm text-gray-500 mt-1">Order food to your room, get it delivered, or reserve a table.</p>
+        <p className="text-sm text-gray-500 mt-1">
+          {orderingEnabled && reservationEnabled
+            ? "Order food to your room, get it delivered, or reserve a table."
+            : orderingEnabled
+            ? "Order food to your room or get it delivered."
+            : "Reserve a table."}
+        </p>
       </div>
 
-      <div className="inline-flex bg-gray-100 rounded-full p-1 mb-6">
-        <button
-          onClick={() => setView("menu")}
-          className={`text-sm px-5 py-2 rounded-full transition-colors ${
-            view === "menu" ? "bg-white shadow-sm font-medium" : "text-gray-500"
-          }`}
-        >
-          🍽️ Order food
-        </button>
-        <button
-          onClick={() => setView("table")}
-          className={`text-sm px-5 py-2 rounded-full transition-colors ${
-            view === "table" ? "bg-white shadow-sm font-medium" : "text-gray-500"
-          }`}
-        >
-          🪑 Book a table
-        </button>
-      </div>
+      {orderingEnabled && reservationEnabled && (
+        <div className="inline-flex bg-gray-100 rounded-full p-1 mb-6">
+          <button
+            onClick={() => setView("menu")}
+            className={`text-sm px-5 py-2 rounded-full transition-colors ${
+              view === "menu" ? "bg-white shadow-sm font-medium" : "text-gray-500"
+            }`}
+          >
+            🍽️ Order food
+          </button>
+          <button
+            onClick={() => setView("table")}
+            className={`text-sm px-5 py-2 rounded-full transition-colors ${
+              view === "table" ? "bg-white shadow-sm font-medium" : "text-gray-500"
+            }`}
+          >
+            🪑 Book a table
+          </button>
+        </div>
+      )}
 
-      {view === "menu" && (
+      {view === "menu" && orderingEnabled && (
         <div className="lg:grid lg:grid-cols-[1fr_320px] lg:gap-8 lg:items-start">
           <div>
             {topCats.length > 1 && (
@@ -271,37 +296,37 @@ export default function RestaurantSection({
                             <div
                               key={item.id}
                               className="border border-gray-200 rounded-2xl bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-                            >
-                              {item.photo_url ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={item.photo_url} alt={item.name} className="h-36 w-full object-cover" />
-                              ) : (
-                                <div
-                                  className="h-16 flex items-center justify-center text-2xl"
-                                  style={{ background: accent + "14" }}
+                          >
+                            {item.photo_url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={item.photo_url} alt={item.name} className="h-36 w-full object-cover" />
+                            ) : (
+                              <div
+                                className="h-16 flex items-center justify-center text-2xl"
+                                style={{ background: accent + "14" }}
+                              >
+                                🍽️
+                              </div>
+                            )}
+                            <div className="p-4">
+                              <p className="text-sm font-medium leading-snug flex items-center gap-2">
+                                {item.is_veg !== null && (
+                                  <span
+                                    className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded-[3px] border flex-shrink-0 ${
+                                    item.is_veg ? "border-green-600" : "border-red-500"
+                                }`}
                                 >
-                                  🍽️
-                                </div>
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full ${item.is_veg ? "bg-green-600" : "bg-red-500"}`}
+                                  />
+                                </span>
                               )}
-                              <div className="p-4">
-                                <p className="text-sm font-medium leading-snug flex items-center gap-2">
-                                  {item.is_veg !== null && (
-                                    <span
-                                      className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded-[3px] border flex-shrink-0 ${
-                                        item.is_veg ? "border-green-600" : "border-red-500"
-                                      }`}
-                                    >
-                                      <span
-                                        className={`w-1.5 h-1.5 rounded-full ${item.is_veg ? "bg-green-600" : "bg-red-500"}`}
-                                      />
-                                    </span>
-                                  )}
-                                  {item.name}
-                                </p>
-                                {item.description && (
-                                  <p className="text-xs text-gray-400 mt-1 line-clamp-2">{item.description}</p>
-                                )}
-                                <div className="flex items-center justify-between mt-3">
+                                {item.name}
+                              </p>
+                              {item.description && (
+                                <p className="text-xs text-gray-400 mt-1 line-clamp-2">{item.description}</p>
+                              )}
+                              <div className="flex items-center justify-between mt-3">
                             <span className="text-sm font-medium" style={{ color: accent }}>
                               {hotel.currency} {item.price}
                             </span>
@@ -333,7 +358,7 @@ export default function RestaurantSection({
                           </div>
                         </div>
                       </div>
-                     );
+                    );
                   })}
                 </div>
               </div>
@@ -378,7 +403,7 @@ export default function RestaurantSection({
         </div>
       )}
 
-      {view === "table" && (
+      {view === "table" && reservationEnabled && (
         <div className="max-w-lg">
           <div className="border border-gray-200 rounded-2xl bg-white shadow-sm p-6">
             {resResult ? (
@@ -558,26 +583,28 @@ function CartPanel({
             </ul>
           )}
 
-          <div className="flex gap-2 mb-3">
-            <button
-              onClick={() => setOrderType("room_service")}
-              className={`text-xs px-2.5 py-1 rounded-full border ${
-                orderType === "room_service" ? "text-white border-transparent" : "border-gray-300"
-              }`}
-              style={orderType === "room_service" ? { background: accent } : undefined}
-            >
-              Room service
-            </button>
-            <button
-              onClick={() => setOrderType("delivery")}
-              className={`text-xs px-2.5 py-1 rounded-full border ${
-                orderType === "delivery" ? "text-white border-transparent" : "border-gray-300"
-              }`}
-              style={orderType === "delivery" ? { background: accent } : undefined}
-            >
-              Delivery
-            </button>
-          </div>
+          {hotel.room_service_enabled && hotel.delivery_enabled && (
+            <div className="flex gap-2 mb-3">
+              <button
+                onClick={() => setOrderType("room_service")}
+                className={`text-xs px-2.5 py-1 rounded-full border ${
+                  orderType === "room_service" ? "text-white border-transparent" : "border-gray-300"
+                }`}
+                style={orderType === "room_service" ? { background: accent } : undefined}
+              >
+                Room service
+              </button>
+              <button
+                onClick={() => setOrderType("delivery")}
+                className={`text-xs px-2.5 py-1 rounded-full border ${
+                  orderType === "delivery" ? "text-white border-transparent" : "border-gray-300"
+                }`}
+                style={orderType === "delivery" ? { background: accent } : undefined}
+              >
+                Delivery
+              </button>
+            </div>
+          )}
 
           <div className="space-y-2">
             <input
