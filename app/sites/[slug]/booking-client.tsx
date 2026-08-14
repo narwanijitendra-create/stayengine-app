@@ -224,16 +224,9 @@ export default function BookingClient({
             )}
 
             {restaurantOnly && (
-              menuItems.length > 0 ? (
-                <div className="mt-2 mb-10">
-                  <RestaurantSection hotel={hotel} menuItems={menuItems} categories={categories} />
-                </div>
-              ) : (
-                <div className="border border-gray-200 rounded-2xl bg-white shadow-sm p-5 mb-6 text-sm text-gray-500">
-                  We&apos;re setting up online ordering for this menu — please check back soon or contact us
-                  directly.
-                </div>
-              )
+              <div className="mt-2 mb-10">
+                <RestaurantSection hotel={hotel} menuItems={menuItems} categories={categories} />
+              </div>
             )}
 
             {!bookingEnabled && !restaurantEnabled && (
@@ -362,7 +355,7 @@ export default function BookingClient({
                             <span className="text-[10px] text-gray-400 px-1 py-0.5">+{rt.amenities.length - 4} more</span>
                           )}
                         </div>
-                      )}
+                      )(
                       <div className="flex items-baseline justify-between">
                         <span className="text-sm font-medium">
                           {fmt(rt.base_price)}
@@ -388,7 +381,10 @@ export default function BookingClient({
             </>
             )}
 
-            {!embedded && !restaurantOnly && menuItems && menuItems.length > 0 && (
+            {!embedded &&
+              !restaurantOnly &&
+              ((menuItems && menuItems.length > 0 && (hotel.room_service_enabled || hotel.delivery_enabled)) ||
+                hotel.table_reservation_enabled) && (
               <div className="mt-10">
                 <h2 className="text-lg font-medium mb-3">Restaurant</h2>
                 <Link
@@ -396,7 +392,11 @@ export default function BookingClient({
                   className="flex items-center justify-between border border-gray-200 rounded-2xl bg-white shadow-sm p-5 hover:shadow-md transition-shadow"
                 >
                   <div>
-                    <p className="text-sm font-medium">Order food or book a table</p>
+                    <p className="text-sm font-medium">
+                      {menuItems && menuItems.length > 0 && (hotel.room_service_enabled || hotel.delivery_enabled)
+                        ? "Order food or book a table"
+                        : "Book a table"}
+                    </p>
                     <p className="text-xs text-gray-500 mt-1">
                       Browse the menu by category, order room service or delivery, or reserve a table
                     </p>
