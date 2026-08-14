@@ -355,7 +355,7 @@ export default function BookingClient({
                             <span className="text-[10px] text-gray-400 px-1 py-0.5">+{rt.amenities.length - 4} more</span>
                           )}
                         </div>
-                      )(
+                      )}
                       <div className="flex items-baseline justify-between">
                         <span className="text-sm font-medium">
                           {fmt(rt.base_price)}
