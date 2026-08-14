@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { MenuItem, MenuCategory, TableReservation, FoodOrder } from "@/lib/types";
 import { buildMenuGroups } from "@/lib/menu";
+import { STOCK_FOOD_PHOTOS } from "@/lib/stock-food-photos";
 
 export default function RestaurantTab({ hotelId }: { hotelId: string }) {
   const [subTab, setSubTab] = useState<"menu" | "orders" | "reservations" | "settings">("menu");
@@ -140,6 +141,7 @@ function MenuManager({ hotelId }: { hotelId: string }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showStockPicker, setShowStockPicker] = useState(false);
 
   async function loadAll() {
     setLoading(true);
@@ -301,12 +303,29 @@ function MenuManager({ hotelId }: { hotelId: string }) {
               <option value="true">Veg</option>
               <option value="false">Non-veg</option>
             </select>
-            <input
-              placeholder="Photo URL (optional)"
-              value={form.photo_url}
-              onChange={(e) => setForm({ ...form, photo_url: e.target.value })}
-              className="border border-gray-300 rounded-md px-3 py-2 text-sm sm:col-span-2"
-            />
+            <div className="sm:col-span-2 flex items-center gap-2">
+              {form.photo_url && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={form.photo_url}
+                  alt=""
+                  className="w-10 h-10 rounded-md object-cover flex-shrink-0 border border-gray-200"
+                />
+              )}
+              <input
+                placeholder="Photo URL (optional)"
+                value={form.photo_url}
+                onChange={(e) => setForm({ ...form, photo_url: e.target.value })}
+                className="border border-gray-300 rounded-md px-3 py-2 text-sm flex-1"
+              />
+              <button
+                type="button"
+                onClick={() => setShowStockPicker(true)}
+                className="text-xs border border-gray-300 rounded-md px-3 py-2 whitespace-nowrap"
+              >
+                Choose stock photo
+              </button>
+            </div>
             <textarea
               placeholder="Description (optional)"
               value={form.description}
@@ -393,6 +412,49 @@ function MenuManager({ hotelId }: { hotelId: string }) {
             </div>
           </div>
         ))
+      )}
+
+      {showStockPicker && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
+          onClick={() => setShowStockPicker(false)}
+        >
+          <div
+            className="bg-white rounded-2xl p-5 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium">Choose a stock photo</p>
+              <button onClick={() => setShowStockPicker(false)} className="text-xs text-gray-500 underline">
+                Close
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mb-4">
+              Free stock photos — pick one if you don&apos;t have your own image for this item.
+            </p>
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+              {STOCK_FOOD_PHOTOS.map((p) => (
+                <button
+                  key={p.url}
+                  type="button"
+                  onClick={() => {
+                    setForm((f) => ({ ...f, photo_url: p.url }));
+                    setShowStockPicker(false);
+                  }}
+                  className="text-left group"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.url}
+                    alt={p.label}
+                    className="w-full h-20 object-cover rounded-lg border border-gray-200 group-hover:opacity-80"
+                  />
+                  <p className="text-[10px] text-gray-500 mt-1 truncate">{p.label}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
