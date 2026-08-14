@@ -20,6 +20,9 @@ export type Hotel = {
   whatsapp_number: string | null;
   booking_enabled: boolean;
   restaurant_enabled: boolean;
+  table_reservation_enabled: boolean;
+  room_service_enabled: boolean;
+  delivery_enabled: boolean;
 };
 
 export type RoomType = {
