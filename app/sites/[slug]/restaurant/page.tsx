@@ -51,11 +51,7 @@ export default async function RestaurantPage({ params }: { params: { slug: strin
           ← Back to {hotel.name}
         </Link>
 
-        {menuItems && menuItems.length > 0 ? (
-          <RestaurantSection hotel={hotel} menuItems={menuItems} categories={menuCategories ?? []} />
-        ) : (
-          <p className="text-sm text-gray-400 mt-10">The restaurant menu isn&apos;t available right now.</p>
-        )}
+        <RestaurantSection hotel={hotel} menuItems={menuItems ?? []} categories={menuCategories ?? []} />
       </div>
     </div>
   );
