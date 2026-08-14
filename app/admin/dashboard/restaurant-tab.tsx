@@ -6,7 +6,7 @@ import type { MenuItem, MenuCategory, TableReservation, FoodOrder } from "@/lib/
 import { buildMenuGroups } from "@/lib/menu";
 
 export default function RestaurantTab({ hotelId }: { hotelId: string }) {
-  const [subTab, setSubTab] = useState<"menu" | "orders" | "reservations">("menu");
+  const [subTab, setSubTab] = useState<"menu" | "orders" | "reservations" | "settings">("menu");
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-5 sm:p-6">
@@ -17,6 +17,7 @@ export default function RestaurantTab({ hotelId }: { hotelId: string }) {
             { key: "menu", label: "Menu" },
             { key: "orders", label: "Orders" },
             { key: "reservations", label: "Table reservations" },
+            { key: "settings", label: "Settings" },
           ] as const
         ).map((t) => (
           <button
@@ -35,6 +36,87 @@ export default function RestaurantTab({ hotelId }: { hotelId: string }) {
       {subTab === "menu" && <MenuManager hotelId={hotelId} />}
       {subTab === "orders" && <OrdersManager hotelId={hotelId} />}
       {subTab === "reservations" && <ReservationsManager hotelId={hotelId} />}
+      {subTab === "settings" && <SettingsManager hotelId={hotelId} />}
+    </div>
+  );
+}
+
+type ServiceFlags = {
+  table_reservation_enabled: boolean;
+  room_service_enabled: boolean;
+  delivery_enabled: boolean;
+};
+
+function SettingsManager({ hotelId }: { hotelId: string }) {
+  const supabase = createBrowserClient();
+  const [flags, setFlags] = useState<ServiceFlags | null>(null);
+  const [busyField, setBusyField] = useState<string | null>(null);
+
+  async function load() {
+    const { data } = await supabase
+      .from("hotels")
+      .select("table_reservation_enabled, room_service_enabled, delivery_enabled")
+      .eq("id", hotelId)
+      .single();
+    setFlags(data as ServiceFlags);
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hotelId]);
+
+  async function toggle(field: keyof ServiceFlags) {
+    if (!flags) return;
+    setBusyField(field);
+    const next = !flags[field];
+    await supabase.from("hotels").update({ [field]: next }).eq("id", hotelId);
+    setFlags({ ...flags, [field]: next });
+    setBusyField(null);
+  }
+
+  if (!flags) return <p className="text-sm text-gray-400">Loading settings...</p>;
+
+  const rows: { field: keyof ServiceFlags; label: string; hint: string }[] = [
+    {
+      field: "table_reservation_enabled",
+      label: "Table reservations",
+      hint: "Let guests request a table booking from the restaurant page.",
+    },
+    {
+      field: "room_service_enabled",
+      label: "Room service orders",
+      hint: "Let guests order food delivered to their room.",
+    },
+    {
+      field: "delivery_enabled",
+      label: "Delivery orders",
+      hint: "Let guests order food delivered to an outside address.",
+    },
+  ];
+
+  return (
+    <div className="space-y-3 max-w-lg">
+      <p className="text-xs text-gray-400 mb-1">
+        Turn individual restaurant features on or off. Guests will only see the options you enable here.
+      </p>
+      {rows.map((r) => (
+        <div key={r.field} className="flex items-center justify-between border border-gray-200 rounded-xl px-4 py-3">
+          <div>
+            <p className="text-sm font-medium">{r.label}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{r.hint}</p>
+          </div>
+          <button
+            disabled={busyField === r.field}
+            onClick={() => toggle(r.field)}
+            className={`text-xs rounded-full px-3 py-1 border disabled:opacity-50 whitespace-nowrap ${
+              flags[r.field] ? "bg-green-50 text-green-800 border-green-200" : "bg-gray-50 text-gray-400 border-gray-200"
+            }`}
+          >
+            {flags[r.field] ? "On" : "Off"}
+          </button>
+        </div>
+      ))}
     </div>
   );
 }
