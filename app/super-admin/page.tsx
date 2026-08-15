@@ -96,6 +96,13 @@ export default function SuperAdmin() {
     setBusyId(null);
   }
 
+  async function toggleCurrencyLock(id: string, locked: boolean) {
+    setBusyId(id);
+    await supabase.from("hotels").update({ currency_locked: locked }).eq("id", id);
+    await loadAll();
+    setBusyId(null);
+  }
+
   async function createHotel(e: React.FormEvent) {
     e.preventDefault();
     setCreateError(null);
@@ -231,6 +238,7 @@ export default function SuperAdmin() {
                 <th className="text-left px-4 py-2 font-normal">Hotel</th>
                 <th className="text-left px-4 py-2 font-normal">URL</th>
                 <th className="text-left px-4 py-2 font-normal">Plan</th>
+                <th className="text-left px-4 py-2 font-normal">Currency</th>
                 <th className="text-left px-4 py-2 font-normal">Status</th>
                 <th className="text-left px-4 py-2 font-normal">Modules</th>
                 <th className="text-right px-4 py-2 font-normal">Actions</th>
@@ -242,6 +250,16 @@ export default function SuperAdmin() {
                   <td className="px-4 py-2">{h.name}</td>
                   <td className="px-4 py-2 text-gray-500">{h.slug}.stayengine.app</td>
                   <td className="px-4 py-2 text-gray-500">{h.plan}</td>
+                  <td className="px-4 py-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-gray-500">{h.currency}</span>
+                      {h.currency_locked && (
+                        <span className="text-[10px] border border-gray-300 rounded-full px-1.5 py-0.5 text-gray-500">
+                          locked
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-2">
                     <span
                       className={`text-xs border rounded-full px-2 py-0.5 ${STATUS_STYLES[h.status] ?? ""}`}
@@ -286,7 +304,7 @@ export default function SuperAdmin() {
                       <button
                         disabled={busyId === h.id}
                         onClick={() => setHotelStatus(h.id, "suspended")}
-                        className="text-xs border border-gray-300 rounded-md px-3 py-1 disabled:opacity-50"
+                        className="text-xs border border-gray-300 rounded-md px-3 py-1 mr-2 disabled:opacity-50"
                       >
                         Suspend
                       </button>
@@ -294,17 +312,24 @@ export default function SuperAdmin() {
                       <button
                         disabled={busyId === h.id}
                         onClick={() => setHotelStatus(h.id, "active")}
-                        className="text-xs border border-gray-300 rounded-md px-3 py-1 disabled:opacity-50"
+                        className="text-xs border border-gray-300 rounded-md px-3 py-1 mr-2 disabled:opacity-50"
                       >
                         Activate
                       </button>
                     )}
+                    <button
+                      disabled={busyId === h.id}
+                      onClick={() => toggleCurrencyLock(h.id, !h.currency_locked)}
+                      className="text-xs border border-gray-300 rounded-md px-3 py-1 disabled:opacity-50"
+                    >
+                      {h.currency_locked ? "Unlock currency" : "Lock currency"}
+                    </button>
                   </td>
                 </tr>
               ))}
               {others.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-gray-400 text-xs">
+                  <td colSpan={6} className="px-4 py-6 text-center text-gray-400 text-xs">
                     No other hotels yet.
                   </td>
                 </tr>
