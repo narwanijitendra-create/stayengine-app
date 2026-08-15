@@ -9,6 +9,7 @@ type StaffRow = {
   full_name: string | null;
   email: string;
   is_suspended: boolean;
+  self_password_reset_allowed: boolean;
   created_at: string;
 };
 
@@ -25,6 +26,8 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdCreds, setCreatedCreds] = useState<{ email: string; password: string } | null>(null);
+  const [resetOpenId, setResetOpenId] = useState<string | null>(null);
+  const [resetInput, setResetInput] = useState("");
   const [resetCreds, setResetCreds] = useState<{ id: string; email: string; password: string } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -37,7 +40,7 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
     setLoading(true);
     const { data } = await supabase
       .from("hotel_users")
-      .select("id, role, full_name, email, is_suspended, created_at")
+      .select("id, role, full_name, email, is_suspended, self_password_reset_allowed, created_at")
       .eq("hotel_id", hotelId)
       .in("role", ["waiter", "kitchen"])
       .order("created_at", { ascending: true });
@@ -73,11 +76,22 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
     if (!error) setStaff((prev) => prev.filter((s) => s.id !== id));
   }
 
-  async function resetPassword(row: StaffRow) {
-    if (!confirm(`Reset the password for ${row.full_name || row.email}? Their current password will stop working.`)) return;
+  async function resetPassword(row: StaffRow, explicitPassword?: string) {
+    if (
+      !confirm(
+        explicitPassword
+          ? `Set a new password for ${row.full_name || row.email}? Their current password will stop working.`
+          : `Generate a new password for ${row.full_name || row.email}? Their current password will stop working.`
+      )
+    )
+      return;
     setBusyId(row.id);
+    setError(null);
     setResetCreds(null);
-    const { data, error } = await supabase.rpc("reset_hotel_staff_password", { p_user_id: row.id });
+    const { data, error } = await supabase.rpc("reset_hotel_staff_password", {
+      p_user_id: row.id,
+      p_new_password: explicitPassword || null,
+    });
     setBusyId(null);
     if (error) {
       setError(error.message);
@@ -85,6 +99,8 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
     }
     const result = Array.isArray(data) ? data[0] : data;
     if (result) setResetCreds({ id: row.id, email: result.email, password: result.password });
+    setResetInput("");
+    setResetOpenId(null);
   }
 
   async function toggleSuspend(row: StaffRow) {
@@ -100,6 +116,21 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
     setStaff((prev) => prev.map((s) => (s.id === row.id ? { ...s, is_suspended: next } : s)));
   }
 
+  async function toggleSelfReset(row: StaffRow) {
+    const next = !row.self_password_reset_allowed;
+    setBusyId(row.id);
+    const { error } = await supabase.rpc("set_hotel_staff_password_reset_allowed", {
+      p_user_id: row.id,
+      p_allowed: next,
+    });
+    setBusyId(null);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setStaff((prev) => prev.map((s) => (s.id === row.id ? { ...s, self_password_reset_allowed: next } : s)));
+  }
+
   const waiters = staff.filter((s) => s.role === "waiter");
   const kitchenStaff = staff.filter((s) => s.role === "kitchen");
 
@@ -108,23 +139,39 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
       <div className="p-3 text-sm">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <p>{s.full_name || s.email}</p>
               {s.is_suspended && (
                 <span className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
                   Suspended
                 </span>
               )}
+              {s.self_password_reset_allowed && (
+                <span className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5">
+                  Can reset own password
+                </span>
+              )}
             </div>
             <p className="text-xs text-gray-400">{s.email}</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <button
-              onClick={() => resetPassword(s)}
+              onClick={() => {
+                setResetOpenId(resetOpenId === s.id ? null : s.id);
+                setResetInput("");
+                setError(null);
+              }}
               disabled={busyId === s.id}
               className="text-xs text-gray-600 underline disabled:opacity-50"
             >
               Reset password
+            </button>
+            <button
+              onClick={() => toggleSelfReset(s)}
+              disabled={busyId === s.id}
+              className="text-xs text-blue-700 underline disabled:opacity-50"
+            >
+              {s.self_password_reset_allowed ? "Don't allow self-reset" : "Allow self-reset"}
             </button>
             <button
               onClick={() => toggleSuspend(s)}
@@ -138,6 +185,37 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
             </button>
           </div>
         </div>
+
+        {resetOpenId === s.id && (
+          <div className="mt-2 border border-gray-200 rounded-md p-3 space-y-2">
+            <button
+              onClick={() => resetPassword(s)}
+              disabled={busyId === s.id}
+              className="text-xs bg-gray-900 text-white rounded-md px-3 py-1.5 disabled:opacity-50"
+            >
+              Generate random password
+            </button>
+            <p className="text-xs text-gray-400">or set a specific password</p>
+            <div className="flex gap-2">
+              <input
+                placeholder="New password (min 6 characters)"
+                value={resetInput}
+                onChange={(e) => setResetInput(e.target.value)}
+                className="border border-gray-300 rounded-md px-2 py-1.5 text-xs flex-1"
+              />
+              <button
+                onClick={() => resetPassword(s, resetInput.trim())}
+                disabled={busyId === s.id || resetInput.trim().length < 6}
+                className="text-xs bg-gray-900 text-white rounded-md px-3 py-1.5 disabled:opacity-50 whitespace-nowrap"
+              >
+                Set password
+              </button>
+            </div>
+          </div>
+        )}
+
+        {error && busyId === null && resetOpenId === s.id && <p className="text-xs text-red-600 mt-2">{error}</p>}
+
         {resetCreds && resetCreds.id === s.id && (
           <div className="mt-2 text-xs bg-green-50 border border-green-200 rounded-md p-3 text-green-800">
             <p className="font-medium mb-1">New password — share this with them now:</p>
@@ -157,8 +235,9 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
         <p className="text-xs text-gray-500 mb-3">
           Waiters get their own login to take dine-in orders by table and update order status.
           Kitchen staff get a login to see incoming orders and acknowledge them into preparation.
-          Neither can see bookings, rooms, or hotel settings. Staff can&apos;t change their own
-          password — reset it here if they forget it.
+          Neither can see bookings, rooms, or hotel settings. By default only you can reset their
+          password — turn on &quot;Allow self-reset&quot; per person if you want them to be able to
+          change it themselves.
         </p>
         <div className="grid sm:grid-cols-3 gap-2 mb-2">
           <input
