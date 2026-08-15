@@ -448,8 +448,11 @@ export default function WaiterPage() {
       ) : (
         <div className="space-y-3">
           {tableGroups.map((g) => {
-            const openCount = g.orders.filter((o) => o.status !== "delivered" && o.status !== "cancelled").length;
             const readyCount = g.orders.filter((o) => o.status === "ready").length;
+            // Only disable once every order for this table is cancelled - a
+            // fully "served" table still needs its bill generated to collect
+            // payment, so serving everything shouldn't lock the button.
+            const hasBillableOrders = g.orders.some((o) => o.status !== "cancelled");
             const tableTotal = g.orders.reduce((sum, o) => sum + Number(o.total_amount), 0);
             return (
               <div key={g.tableNumber} className="border border-gray-200 rounded-xl overflow-hidden">
@@ -470,7 +473,7 @@ export default function WaiterPage() {
                   </div>
                   <button
                     onClick={() => setBillTable(g.tableNumber)}
-                    disabled={openCount === 0}
+                    disabled={!hasBillableOrders}
                     className="text-xs bg-gray-900 text-white rounded-md px-3 py-1.5 disabled:opacity-50 whitespace-nowrap"
                   >
                     Final bill
