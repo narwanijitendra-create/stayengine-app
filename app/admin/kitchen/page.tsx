@@ -108,11 +108,15 @@ export default function KitchenPage() {
   }, []);
 
   async function loadOrders(hotelId: string) {
+    // closed_at marks a table's dining session as fully settled by the
+    // waiter - once closed, the kitchen doesn't need to see it again even
+    // with "Show delivered/cancelled" checked.
     const { data } = await supabase
       .from("food_orders")
       .select("*")
       .eq("hotel_id", hotelId)
       .eq("order_type", ORDER_TYPE)
+      .is("closed_at", null)
       .order("created_at", { ascending: true });
     setOrders((data as FoodOrder[]) || []);
   }
