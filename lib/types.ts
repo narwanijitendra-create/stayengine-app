@@ -23,6 +23,7 @@ export type Hotel = {
   table_reservation_enabled: boolean;
   room_service_enabled: boolean;
   delivery_enabled: boolean;
+  order_email_notifications_enabled: boolean;
 };
 
 export type RoomType = {
