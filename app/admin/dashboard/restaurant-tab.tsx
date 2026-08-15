@@ -866,7 +866,7 @@ function OrdersManager({ hotelId }: { hotelId: string }) {
             >
               {ORDER_STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {s.replace(/_/g, " ")}
+                  {s === "delivered" && order.order_type === "dine_in" ? "served" : s.replace(/_/g, " ")}
                 </option>
               ))}
             </select>
