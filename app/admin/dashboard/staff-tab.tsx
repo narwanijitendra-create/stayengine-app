@@ -70,7 +70,7 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
       <div className="border border-gray-200 rounded-xl p-4 mb-4">
         <p className="text-sm font-medium mb-1">Add a waiter</p>
         <p className="text-xs text-gray-500 mb-3">
-          Waiters get their own login to take dine-in orders by table and update order status â
+          Waiters get their own login to take dine-in orders by table and update order status —
           they can&apos;t see bookings, rooms, or hotel settings.
         </p>
         <div className="grid sm:grid-cols-2 gap-2 mb-2">
@@ -99,7 +99,7 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
 
         {createdCreds && (
           <div className="mt-3 text-xs bg-green-50 border border-green-200 rounded-md p-3 text-green-800">
-            <p className="font-medium mb-1">Account created â share these credentials with them now:</p>
+            <p className="font-medium mb-1">Account created — share these credentials with them now:</p>
             <p>Email: {createdCreds.email}</p>
             <p>Password: {createdCreds.password}</p>
             <p className="text-green-600 mt-1">This password won&apos;t be shown again.</p>
