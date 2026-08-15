@@ -33,7 +33,7 @@ export default function AdminLogin() {
     setLoading(false);
 
     if (hu) {
-      router.push(hu.role === "waiter" ? "/admin/waiter" : "/admin/dashboard");
+      router.push(hu.role === "waiter" ? "/admin/waiter" : hu.role === "kitchen" ? "/admin/kitchen" : "/admin/dashboard");
       return;
     }
 
