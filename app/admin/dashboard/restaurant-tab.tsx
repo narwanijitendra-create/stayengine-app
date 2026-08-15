@@ -46,6 +46,8 @@ type ServiceFlags = {
   table_reservation_enabled: boolean;
   room_service_enabled: boolean;
   delivery_enabled: boolean;
+  order_email_notifications_enabled: boolean;
+  contact_email: string | null;
 };
 
 function SettingsManager({ hotelId }: { hotelId: string }) {
@@ -56,7 +58,9 @@ function SettingsManager({ hotelId }: { hotelId: string }) {
   async function load() {
     const { data } = await supabase
       .from("hotels")
-      .select("table_reservation_enabled, room_service_enabled, delivery_enabled")
+      .select(
+        "table_reservation_enabled, room_service_enabled, delivery_enabled, order_email_notifications_enabled, contact_email"
+      )
       .eq("id", hotelId)
       .single();
     setFlags(data as ServiceFlags);
@@ -67,7 +71,7 @@ function SettingsManager({ hotelId }: { hotelId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hotelId]);
 
-  async function toggle(field: keyof ServiceFlags) {
+  async function toggle(field: "table_reservation_enabled" | "room_service_enabled" | "delivery_enabled" | "order_email_notifications_enabled") {
     if (!flags) return;
     setBusyField(field);
     const next = !flags[field];
@@ -78,7 +82,7 @@ function SettingsManager({ hotelId }: { hotelId: string }) {
 
   if (!flags) return <p className="text-sm text-gray-400">Loading settings...</p>;
 
-  const rows: { field: keyof ServiceFlags; label: string; hint: string }[] = [
+  const rows: { field: "table_reservation_enabled" | "room_service_enabled" | "delivery_enabled"; label: string; hint: string }[] = [
     {
       field: "table_reservation_enabled",
       label: "Table reservations",
@@ -118,6 +122,28 @@ function SettingsManager({ hotelId }: { hotelId: string }) {
           </button>
         </div>
       ))}
+
+      <div className="flex items-center justify-between border border-gray-200 rounded-xl px-4 py-3">
+        <div>
+          <p className="text-sm font-medium">Email me on new orders</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {flags.contact_email
+              ? `Sends a notification to ${flags.contact_email} for new room service and delivery orders.`
+              : "Add a contact email under Hotel profile first — notifications need somewhere to send to."}
+          </p>
+        </div>
+        <button
+          disabled={busyField === "order_email_notifications_enabled" || !flags.contact_email}
+          onClick={() => toggle("order_email_notifications_enabled")}
+          className={`text-xs rounded-full px-3 py-1 border disabled:opacity-50 whitespace-nowrap ${
+            flags.order_email_notifications_enabled
+              ? "bg-green-50 text-green-800 border-green-200"
+              : "bg-gray-50 text-gray-400 border-gray-200"
+          }`}
+        >
+          {flags.order_email_notifications_enabled ? "On" : "Off"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -604,7 +630,7 @@ function CategoryManager({
                     disabled={catIdx === topCats.length - 1}
                     className="text-gray-400 hover:text-gray-700 disabled:opacity-20 leading-none text-[10px] px-0.5"
                     aria-label="Move down"
-                  >
+                >
                     ▼
                   </button>
                 </div>
@@ -682,7 +708,7 @@ function CategoryManager({
                       >
                         {sub.name}
                       </span>
-                    )  }
+                    )}
                     <button onClick={() => deleteCategory(sub.id)} className="text-xs underline text-red-500">
                       Delete
                     </button>
