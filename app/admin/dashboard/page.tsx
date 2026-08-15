@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { Booking, RoomType, Hotel, NearbyPoint } from "@/lib/types";
 import RestaurantTab from "./restaurant-tab";
+import StaffTab from "./staff-tab";
 
 type HotelUserRow = {
   id: string;
@@ -137,7 +138,7 @@ function AdminDashboardInner() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([]);
   const [nearbyPoints, setNearbyPoints] = useState<NearbyPoint[]>([]);
-  const [tab, setTab] = useState<"overview" | "bookings" | "rooms" | "restaurant" | "profile">("overview");
+  const [tab, setTab] = useState<"overview" | "bookings" | "rooms" | "restaurant" | "staff" | "profile">("overview");
   const [justArrived, setJustArrived] = useState<Set<string>>(new Set());
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [noHotelYet, setNoHotelYet] = useState(false);
@@ -261,6 +262,10 @@ function AdminDashboardInner() {
         return;
       }
       const huTyped = hu as unknown as HotelUserRow;
+      if (huTyped.role === "waiter") {
+        router.push("/admin/waiter");
+        return;
+      }
       setHotelUser(huTyped);
       setHotel(huTyped.hotels);
       setMeForm({ full_name: huTyped.full_name ?? "", phone: huTyped.phone ?? "" });
@@ -757,10 +762,11 @@ function AdminDashboardInner() {
       )}
 
       {(() => {
-        const availableTabs = (["overview", "bookings", "rooms", "restaurant", "profile"] as const).filter(
+        const availableTabs = (["overview", "bookings", "rooms", "restaurant", "staff", "profile"] as const).filter(
           (t) => {
             if ((t === "bookings" || t === "rooms") && !hotel.booking_enabled) return false;
             if (t === "restaurant" && !hotel.restaurant_enabled) return false;
+            if (t === "staff" && hotelUser.role !== "owner") return false;
             return true;
           }
         );
@@ -1289,6 +1295,7 @@ function AdminDashboardInner() {
       )}
       {tab === "restaurant" && hotel.restaurant_enabled && <RestaurantTab hotelId={hotel.id} />}
 
+      {tab === "staff" && hotelUser.role === "owner" && <StaffTab hotelId={hotel.id} />}
     </main>
   );
 }
