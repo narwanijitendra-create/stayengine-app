@@ -199,7 +199,7 @@ export default function WaiterPage() {
           </div>
           <div>
             <p className="font-medium text-sm">{hotel.name}</p>
-            <p className="text-xs text-gray-500">Waiter Â· {waiterUser.full_name || waiterUser.email}</p>
+            <p className="text-xs text-gray-500">Waiter · {waiterUser.full_name || waiterUser.email}</p>
           </div>
         </div>
         <button
@@ -259,7 +259,7 @@ export default function WaiterPage() {
                       onClick={() => changeQty(c.menu_item_id, -1)}
                       className="w-5 h-5 border border-gray-300 rounded text-xs leading-none"
                     >
-                      â
+                      −
                     </button>
                     <span className="text-xs w-4 text-center">{c.qty}</span>
                     <button
@@ -312,7 +312,7 @@ export default function WaiterPage() {
             <div key={order.id} className="px-4 py-3">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
-                  <p className="text-sm font-medium">Table {order.table_number || "â"}</p>
+                  <p className="text-sm font-medium">Table {order.table_number || "—"}</p>
                   <p className="text-xs text-gray-400">{new Date(order.created_at).toLocaleString()}</p>
                 </div>
                 <select
@@ -330,7 +330,7 @@ export default function WaiterPage() {
               <ul className="mt-2 text-xs text-gray-500 space-y-0.5">
                 {order.items.map((i, idx) => (
                   <li key={idx}>
-                    {i.qty} Ã {i.name} â {(i.qty * i.price).toFixed(2)}
+                    {i.qty} × {i.name} — {(i.qty * i.price).toFixed(2)}
                   </li>
                 ))}
               </ul>
