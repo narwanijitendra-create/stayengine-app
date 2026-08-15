@@ -140,7 +140,7 @@ export type FoodOrder = {
   items: FoodOrderItem[];
   total_amount: number;
   currency: string;
-  status: "pending" | "confirmed" | "preparing" | "out_for_delivery" | "delivered" | "cancelled";
+  status: "pending" | "confirmed" | "preparing" | "ready" | "out_for_delivery" | "delivered" | "cancelled";
   notes: string | null;
   created_at: string;
 };
