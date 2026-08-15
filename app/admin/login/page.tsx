@@ -1,16 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 
 export default function AdminLogin() {
   const supabase = createBrowserClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    searchParams.get("suspended") ? "Your account has been suspended. Contact your hotel admin." : null
+  );
   const [loading, setLoading] = useState(false);
+
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotBusy, setForgotBusy] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState<string | null>(null);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -27,9 +35,16 @@ export default function AdminLogin() {
     // dedicated order-taking screen, everyone else to the full dashboard.
     const { data: hu } = await supabase
       .from("hotel_users")
-      .select("id, role")
+      .select("id, role, is_suspended")
       .eq("auth_user_id", data.user.id)
       .maybeSingle();
+
+    if (hu?.is_suspended) {
+      await supabase.auth.signOut();
+      setLoading(false);
+      setError("Your account has been suspended. Contact your hotel admin.");
+      return;
+    }
     setLoading(false);
 
     if (hu) {
@@ -46,6 +61,30 @@ export default function AdminLogin() {
       .maybeSingle();
 
     router.push(pa ? "/super-admin" : "/admin/dashboard");
+  }
+
+  async function handleForgotPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!forgotEmail.trim()) return;
+    setForgotBusy(true);
+    setForgotMessage(null);
+
+    // Waiter/kitchen accounts don't get self-service reset - only the hotel
+    // owner can reset their password, from the Staff tab.
+    const { data: isStaff } = await supabase.rpc("is_staff_account", { p_email: forgotEmail.trim() });
+    if (isStaff) {
+      setForgotBusy(false);
+      setForgotMessage("Staff accounts are managed by your hotel admin — ask them to reset your password from the Staff tab.");
+      return;
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
+      redirectTo: `${window.location.origin}/admin/reset-password`,
+    });
+    setForgotBusy(false);
+    setForgotMessage(
+      error ? error.message : "If an account exists for that email, a reset link has been sent."
+    );
   }
 
   return (
@@ -75,6 +114,38 @@ export default function AdminLogin() {
           {loading ? "Signing in..." : "Sign in"}
         </button>
       </form>
+
+      <button
+        onClick={() => {
+          setShowForgot((v) => !v);
+          setForgotMessage(null);
+          setForgotEmail(email);
+        }}
+        className="text-xs text-gray-500 underline mt-3"
+      >
+        Forgot password?
+      </button>
+
+      {showForgot && (
+        <form onSubmit={handleForgotPassword} className="mt-3 border border-gray-200 rounded-md p-3 space-y-2">
+          <p className="text-xs text-gray-500">Hotel owners: enter your email and we&apos;ll send a reset link.</p>
+          <input
+            type="email"
+            placeholder="Email"
+            value={forgotEmail}
+            onChange={(e) => setForgotEmail(e.target.value)}
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+          />
+          {forgotMessage && <p className="text-xs text-gray-600">{forgotMessage}</p>}
+          <button
+            disabled={forgotBusy || !forgotEmail.trim()}
+            className="text-xs bg-gray-900 text-white rounded-md px-3 py-1.5 disabled:opacity-50"
+          >
+            {forgotBusy ? "Sending..." : "Send reset link"}
+          </button>
+        </form>
+      )}
+
       <p className="text-xs text-gray-400 mt-6">
         New hotel?{" "}
         <a href="/admin/signup" className="underline">
