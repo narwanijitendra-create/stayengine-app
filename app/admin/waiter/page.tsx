@@ -22,7 +22,7 @@ type CartLine = {
   qty: number;
 };
 
-const DINE_IN_STATUSES: FoodOrder["status"][] = ["pending", "confirmed", "preparing", "delivered", "cancelled"];
+const DINE_IN_STATUSES: FoodOrder["status"][] = ["pending", "confirmed", "preparing", "ready", "delivered", "cancelled"];
 
 export default function WaiterPage() {
   const supabase = createBrowserClient();
@@ -379,12 +379,20 @@ export default function WaiterPage() {
         <div className="space-y-3">
           {tableGroups.map((g) => {
             const openCount = g.orders.filter((o) => o.status !== "delivered" && o.status !== "cancelled").length;
+            const readyCount = g.orders.filter((o) => o.status === "ready").length;
             const tableTotal = g.orders.reduce((sum, o) => sum + Number(o.total_amount), 0);
             return (
               <div key={g.tableNumber} className="border border-gray-200 rounded-xl overflow-hidden">
                 <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-3 bg-gray-50">
                   <div>
-                    <p className="text-sm font-medium">Table {g.tableNumber}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">Table {g.tableNumber}</p>
+                      {readyCount > 0 && (
+                        <span className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
+                          {readyCount} ready to serve
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-400">
                       {g.orders.length} order{g.orders.length > 1 ? "s" : ""} · Total {tableTotal.toFixed(2)}{" "}
                       {hotel.currency}
