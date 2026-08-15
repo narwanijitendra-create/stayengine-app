@@ -12,7 +12,7 @@ export default function RestaurantTab({ hotelId }: { hotelId: string }) {
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-5 sm:p-6">
       <h2 className="text-base font-medium mb-4">Restaurant</h2>
-      <div className="flex gap-2 mb-5">
+      <div className="flex gap-2 mb-5 flex-wrap">
         {(
           [
             { key: "menu", label: "Menu" },
@@ -407,7 +407,6 @@ function MenuManager({ hotelId }: { hotelId: string }) {
                       onClick={() => moveItem(group.items, item.id, "down")}
                       disabled={idx === group.items.length - 1}
                       className="text-gray-400 hover:text-gray-700 disabled:opacity-20 leading-none text-[10px] px-0.5"
-                      aria-label="Move down"
                     >
                       ▼
                     </button>
@@ -645,7 +644,7 @@ function CategoryManager({
                   <div
                     key={sub.id}
                     className="flex items-center gap-2 bg-white border border-gray-100 rounded-lg px-3 py-1.5"
-                  >
+          >
                     <div className="flex flex-col shrink-0">
                       <button
                         onClick={() => moveSub(cat.id, sub.id, "up")}
@@ -683,7 +682,7 @@ function CategoryManager({
                       >
                         {sub.name}
                       </span>
-                    )}
+                    )  }
                     <button onClick={() => deleteCategory(sub.id)} className="text-xs underline text-red-500">
                       Delete
                     </button>
@@ -770,10 +769,53 @@ function OrdersManager({ hotelId }: { hotelId: string }) {
   }
 
   if (loading) return <p className="text-sm text-gray-400">Loading orders...</p>;
+
+  // Dine-in orders that are still open (not delivered/cancelled), grouped by
+  // table, so the owner can see at a glance which tables have running orders
+  // that haven't been closed out yet.
+  const runningTables: { tableNumber: string; orders: FoodOrder[] }[] = [];
+  {
+    const byTable = new Map<string, FoodOrder[]>();
+    for (const o of orders) {
+      if (o.order_type !== "dine_in") continue;
+      if (o.status === "delivered" || o.status === "cancelled") continue;
+      const key = o.table_number || "—";
+      if (!byTable.has(key)) byTable.set(key, []);
+      byTable.get(key)!.push(o);
+    }
+    for (const [tableNumber, tableOrders] of byTable) {
+      runningTables.push({ tableNumber, orders: tableOrders });
+    }
+    runningTables.sort((a, b) => a.tableNumber.localeCompare(b.tableNumber, undefined, { numeric: true }));
+  }
+
   if (orders.length === 0) return <p className="text-sm text-gray-400">No food orders yet.</p>;
 
   return (
-    <div className="divide-y divide-gray-100 border border-gray-200 rounded-xl overflow-hidden">
+    <div>
+      {runningTables.length > 0 && (
+        <div className="mb-5">
+          <p className="text-sm font-medium mb-2">Running tables</p>
+          <p className="text-xs text-gray-400 mb-2">
+            Dine-in tables with orders placed but not yet closed by the waiter.
+          </p>
+          <div className="grid sm:grid-cols-2 gap-2">
+            {runningTables.map((g) => {
+              const total = g.orders.reduce((sum, o) => sum + Number(o.total_amount), 0);
+              return (
+                <div key={g.tableNumber} className="border border-amber-200 bg-amber-50 rounded-xl px-4 py-3">
+                  <p className="text-sm font-medium">Table {g.tableNumber}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {g.orders.length} open order{g.orders.length > 1 ? "s" : ""} · Total{" "}
+                    {total.toFixed(2)} {g.orders[0].currency}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      <div className="divide-y divide-gray-100 border border-gray-200 rounded-xl overflow-hidden">
       {orders.map((order) => (
         <div key={order.id} className="px-4 py-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -815,6 +857,7 @@ function OrdersManager({ hotelId }: { hotelId: string }) {
           {order.notes && <p className="text-xs text-gray-400 mt-1">Note: {order.notes}</p>}
         </div>
       ))}
+      </div>
     </div>
   );
 }
