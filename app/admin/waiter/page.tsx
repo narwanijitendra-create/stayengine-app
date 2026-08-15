@@ -36,6 +36,7 @@ export default function WaiterPage() {
   const [showAllOrders, setShowAllOrders] = useState(false);
 
   const [tableNumber, setTableNumber] = useState("");
+  const [itemSearch, setItemSearch] = useState("");
   const [notes, setNotes] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [placing, setPlacing] = useState(false);
@@ -184,7 +185,9 @@ export default function WaiterPage() {
   }
 
   const hotel = waiterUser.hotels;
-  const groups = buildMenuGroups(items, categories);
+  const searchQuery = itemSearch.trim().toLowerCase();
+  const filteredItems = searchQuery ? items.filter((i) => i.name.toLowerCase().includes(searchQuery)) : items;
+  const groups = buildMenuGroups(filteredItems, categories);
   const visibleOrders = showAllOrders ? orders : orders.filter((o) => o.status !== "delivered" && o.status !== "cancelled");
 
   return (
@@ -215,15 +218,25 @@ export default function WaiterPage() {
 
       <div className="border border-gray-200 rounded-xl p-4 mb-6">
         <p className="text-sm font-medium mb-3">New order</p>
-        <input
-          placeholder="Table number"
-          value={tableNumber}
-          onChange={(e) => setTableNumber(e.target.value)}
-          className="border border-gray-300 rounded-md px-3 py-2 text-sm w-40 mb-3"
-        />
+        <div className="flex gap-2 mb-3">
+          <input
+            placeholder="Table number"
+            value={tableNumber}
+            onChange={(e) => setTableNumber(e.target.value)}
+            className="border border-gray-300 rounded-md px-3 py-2 text-sm w-40"
+          />
+          <input
+            placeholder="Search items..."
+            value={itemSearch}
+            onChange={(e) => setItemSearch(e.target.value)}
+            className="border border-gray-300 rounded-md px-3 py-2 text-sm flex-1"
+          />
+        </div>
 
         {groups.length === 0 ? (
-          <p className="text-xs text-gray-400 mb-3">No available menu items yet.</p>
+          <p className="text-xs text-gray-400 mb-3">
+            {searchQuery ? `No items match "${itemSearch.trim()}".` : "No available menu items yet."}
+          </p>
         ) : (
           groups.map((group) => (
             <div key={`${group.category.id}-${group.subcategory?.id ?? "none"}`} className="mb-3">
