@@ -11,6 +11,7 @@ type KitchenUserRow = {
   role: string;
   full_name: string | null;
   email: string;
+  is_suspended: boolean;
   hotels: Hotel;
 };
 
@@ -39,12 +40,17 @@ export default function KitchenPage() {
 
       const { data: hu } = await supabase
         .from("hotel_users")
-        .select("id, hotel_id, role, full_name, email, hotels(*)")
+        .select("id, hotel_id, role, full_name, email, is_suspended, hotels(*)")
         .eq("auth_user_id", auth.user.id)
         .maybeSingle();
 
       if (!hu) {
         router.push("/admin/login");
+        return;
+      }
+      if (hu.is_suspended) {
+        await supabase.auth.signOut();
+        router.push("/admin/login?suspended=1");
         return;
       }
       if (hu.role !== "kitchen") {
