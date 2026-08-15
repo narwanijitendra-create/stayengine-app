@@ -257,7 +257,11 @@ export default function WaiterPage() {
   const searchQuery = itemSearch.trim().toLowerCase();
   const filteredItems = searchQuery ? items.filter((i) => i.name.toLowerCase().includes(searchQuery)) : items;
   const groups = buildMenuGroups(filteredItems, categories);
-  const visibleOrders = showAllOrders ? orders : orders.filter((o) => o.status !== "delivered" && o.status !== "cancelled");
+  // Served ("delivered") orders stay on the active board - a table isn't
+  // done until its bill is actually closed, at which point closed_at is set
+  // and loadOrders excludes it entirely. So the only thing this toggle hides
+  // by default is cancelled orders.
+  const visibleOrders = showAllOrders ? orders : orders.filter((o) => o.status !== "cancelled");
 
   // Group orders by table so a table with several rounds (starters, mains,
   // dessert...) shows as one card instead of scattered separate entries.
@@ -456,7 +460,7 @@ export default function WaiterPage() {
         <p className="text-sm font-medium">Table orders</p>
         <label className="text-xs text-gray-500 flex items-center gap-1.5">
           <input type="checkbox" checked={showAllOrders} onChange={(e) => setShowAllOrders(e.target.checked)} />
-          Show completed/cancelled
+          Show cancelled orders
         </label>
       </div>
 
