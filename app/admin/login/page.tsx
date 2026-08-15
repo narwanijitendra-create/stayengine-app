@@ -23,16 +23,17 @@ export default function AdminLogin() {
       return;
     }
 
-    // If this account owns a hotel, go straight to the hotel dashboard.
+    // If this account belongs to a hotel, route by role: waiters go to the
+    // dedicated order-taking screen, everyone else to the full dashboard.
     const { data: hu } = await supabase
       .from("hotel_users")
-      .select("id")
+      .select("id, role")
       .eq("auth_user_id", data.user.id)
       .maybeSingle();
     setLoading(false);
 
     if (hu) {
-      router.push("/admin/dashboard");
+      router.push(hu.role === "waiter" ? "/admin/waiter" : "/admin/dashboard");
       return;
     }
 
