@@ -1,6 +1,7 @@
 "use server";
 
 import { createServerClient } from "@/lib/supabase/server";
+import { sendEmail } from "@/lib/email";
 
 export type CreateBookingInput = {
   hotelId: string;
@@ -88,6 +89,41 @@ export async function createFoodOrder(input: CreateFoodOrderInput) {
 
   if (error || !data || !data[0]) {
     return { error: error?.message ?? "Could not place order" };
+  }
+
+  // Notify the hotel owner for room service / delivery orders (not dine-in,
+  // since those are taken by a waiter who's already at the table). Best
+  // effort - a failed/unconfigured email should never block the order.
+  if (input.orderType === "room_service" || input.orderType === "delivery") {
+    const { data: hotel } = await supabase
+      .from("hotels")
+      .select("name, contact_email, order_email_notifications_enabled")
+      .eq("id", input.hotelId)
+      .maybeSingle();
+
+    if (hotel?.order_email_notifications_enabled && hotel.contact_email) {
+      const itemsHtml = input.items
+        .map((i) => `<li>${i.qty} &times; ${i.name} &mdash; ${(i.qty * i.price).toFixed(2)}</li>`)
+        .join("");
+      const orderTypeLabel = input.orderType === "room_service" ? "Room service" : "Delivery";
+      const locationLine =
+        input.orderType === "room_service"
+          ? `Room: ${input.roomNumber || "not given"}`
+          : `Deliver to: ${input.deliveryAddress || "not given"}`;
+
+      await sendEmail({
+        to: hotel.contact_email,
+        subject: `New ${orderTypeLabel.toLowerCase()} order - ${input.customerName}`,
+        html: `
+          <p>New ${orderTypeLabel.toLowerCase()} order for <strong>${hotel.name}</strong>.</p>
+          <p>${input.customerName} &amp; ${input.phone}</p>
+          <p>${locationLine}</p>
+          <ul>${itemsHtml}</ul>
+          <p><strong>Total: ${input.totalAmount.toFixed(2)} ${input.currency}</strong></p>
+          ${input.notes ? `<p>Note: ${input.notes}</p>` : ""}
+        `,
+      });
+    }
   }
 
   return { order: data[0] };
