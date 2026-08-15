@@ -142,6 +142,20 @@ function MenuManager({ hotelId }: { hotelId: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showStockPicker, setShowStockPicker] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
+
+  async function handlePhotoUpload(file: File | null) {
+    if (!file) return;
+    setPhotoUploading(true);
+    const ext = file.name.split(".").pop() || "jpg";
+    const path = `${hotelId}/menu/${crypto.randomUUID()}.${ext}`;
+    const { error: uploadError } = await supabase.storage.from("hotel-media").upload(path, file, { upsert: true });
+    if (!uploadError) {
+      const { data } = supabase.storage.from("hotel-media").getPublicUrl(path);
+      setForm((f) => ({ ...f, photo_url: data.publicUrl }));
+    }
+    setPhotoUploading(false);
+  }
 
   async function loadAll() {
     setLoading(true);
@@ -303,28 +317,42 @@ function MenuManager({ hotelId }: { hotelId: string }) {
               <option value="true">Veg</option>
               <option value="false">Non-veg</option>
             </select>
-            <div className="sm:col-span-2 flex items-center gap-2">
-              {form.photo_url && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={form.photo_url}
-                  alt=""
-                  className="w-10 h-10 rounded-md object-cover flex-shrink-0 border border-gray-200"
+            <div className="sm:col-span-2 space-y-2">
+              <div className="flex items-center gap-2">
+                {form.photo_url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={form.photo_url}
+                    alt=""
+                    className="w-10 h-10 rounded-md object-cover flex-shrink-0 border border-gray-200"
+                  />
+                )}
+                <input
+                  placeholder="Photo URL (optional)"
+                  value={form.photo_url}
+                  onChange={(e) => setForm({ ...form, photo_url: e.target.value })}
+                  className="border border-gray-300 rounded-md px-3 py-2 text-sm flex-1"
                 />
-              )}
-              <input
-                placeholder="Photo URL (optional)"
-                value={form.photo_url}
-                onChange={(e) => setForm({ ...form, photo_url: e.target.value })}
-                className="border border-gray-300 rounded-md px-3 py-2 text-sm flex-1"
-              />
-              <button
-                type="button"
-                onClick={() => setShowStockPicker(true)}
-                className="text-xs border border-gray-300 rounded-md px-3 py-2 whitespace-nowrap"
-              >
-                Choose stock photo
-              </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs border border-gray-300 rounded-md px-3 py-2 whitespace-nowrap cursor-pointer">
+                  {photoUploading ? "Uploading..." : "Upload photo"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={photoUploading}
+                    onChange={(e) => handlePhotoUpload(e.target.files?.[0] ?? null)}
+                    className="hidden"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowStockPicker(true)}
+                  className="text-xs border border-gray-300 rounded-md px-3 py-2 whitespace-nowrap"
+                >
+                  Choose stock photo
+                </button>
+              </div>
             </div>
             <textarea
               placeholder="Description (optional)"
