@@ -41,6 +41,8 @@ export default function WaiterPage() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState<string | null>(null);
+  const [billTable, setBillTable] = useState<string | null>(null);
+  const [closingTable, setClosingTable] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -180,6 +182,24 @@ export default function WaiterPage() {
     if (waiterUser) loadOrders(waiterUser.hotel_id);
   }
 
+  // A table can have several order rounds (starters, then mains, then
+  // dessert, etc). Closing the table marks every still-open round for that
+  // table as delivered in one go, instead of updating each one by hand.
+  async function closeTable(tableNumber: string) {
+    if (!waiterUser) return;
+    setClosingTable(true);
+    await supabase
+      .from("food_orders")
+      .update({ status: "delivered" })
+      .eq("hotel_id", waiterUser.hotel_id)
+      .eq("order_type", "dine_in")
+      .eq("table_number", tableNumber)
+      .in("status", ["pending", "confirmed", "preparing"]);
+    await loadOrders(waiterUser.hotel_id);
+    setClosingTable(false);
+    setBillTable(null);
+  }
+
   if (loading || !waiterUser) {
     return <main className="max-w-3xl mx-auto px-6 py-16 text-sm text-gray-500">Loading...</main>;
   }
@@ -189,6 +209,42 @@ export default function WaiterPage() {
   const filteredItems = searchQuery ? items.filter((i) => i.name.toLowerCase().includes(searchQuery)) : items;
   const groups = buildMenuGroups(filteredItems, categories);
   const visibleOrders = showAllOrders ? orders : orders.filter((o) => o.status !== "delivered" && o.status !== "cancelled");
+
+  // Group orders by table so a table with several rounds (starters, mains,
+  // dessert...) shows as one card instead of scattered separate entries.
+  const tableGroups: { tableNumber: string; orders: FoodOrder[] }[] = [];
+  {
+    const byTable = new Map<string, FoodOrder[]>();
+    for (const o of visibleOrders) {
+      const key = o.table_number || "—";
+      if (!byTable.has(key)) byTable.set(key, []);
+      byTable.get(key)!.push(o);
+    }
+    for (const [tableNumber, tableOrders] of byTable) {
+      tableGroups.push({ tableNumber, orders: tableOrders });
+    }
+  }
+
+  // Final bill for the currently open bill modal: every non-cancelled order
+  // for that table (regardless of the "show completed" toggle above),
+  // consolidated into one itemized list plus a grand total.
+  const billOrders = billTable ? orders.filter((o) => o.table_number === billTable && o.status !== "cancelled") : [];
+  const billItems: { name: string; qty: number; price: number }[] = [];
+  {
+    const byName = new Map<string, { name: string; qty: number; price: number }>();
+    for (const o of billOrders) {
+      for (const i of o.items) {
+        const existing = byName.get(i.name);
+        if (existing) {
+          existing.qty += i.qty;
+        } else {
+          byName.set(i.name, { name: i.name, qty: i.qty, price: i.price });
+        }
+      }
+    }
+    billItems.push(...byName.values());
+  }
+  const billTotal = billOrders.reduce((sum, o) => sum + Number(o.total_amount), 0);
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-8">
@@ -317,42 +373,113 @@ export default function WaiterPage() {
         </label>
       </div>
 
-      {visibleOrders.length === 0 ? (
+      {tableGroups.length === 0 ? (
         <p className="text-sm text-gray-400">No open table orders.</p>
       ) : (
-        <div className="divide-y divide-gray-100 border border-gray-200 rounded-xl overflow-hidden">
-          {visibleOrders.map((order) => (
-            <div key={order.id} className="px-4 py-3">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <p className="text-sm font-medium">Table {order.table_number || "—"}</p>
-                  <p className="text-xs text-gray-400">{new Date(order.created_at).toLocaleString()}</p>
+        <div className="space-y-3">
+          {tableGroups.map((g) => {
+            const openCount = g.orders.filter((o) => o.status !== "delivered" && o.status !== "cancelled").length;
+            const tableTotal = g.orders.reduce((sum, o) => sum + Number(o.total_amount), 0);
+            return (
+              <div key={g.tableNumber} className="border border-gray-200 rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-3 bg-gray-50">
+                  <div>
+                    <p className="text-sm font-medium">Table {g.tableNumber}</p>
+                    <p className="text-xs text-gray-400">
+                      {g.orders.length} order{g.orders.length > 1 ? "s" : ""} · Total {tableTotal.toFixed(2)}{" "}
+                      {hotel.currency}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setBillTable(g.tableNumber)}
+                    disabled={openCount === 0}
+                    className="text-xs bg-gray-900 text-white rounded-md px-3 py-1.5 disabled:opacity-50 whitespace-nowrap"
+                  >
+                    Final bill
+                  </button>
                 </div>
-                <select
-                  value={order.status}
-                  onChange={(e) => updateStatus(order.id, e.target.value as FoodOrder["status"])}
-                  className="border border-gray-300 rounded-md px-2 py-1 text-xs"
-                >
-                  {DINE_IN_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {s.replace(/_/g, " ")}
-                    </option>
+                <div className="divide-y divide-gray-100">
+                  {g.orders.map((order) => (
+                    <div key={order.id} className="px-4 py-3">
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <p className="text-xs text-gray-400">{new Date(order.created_at).toLocaleString()}</p>
+                        <select
+                          value={order.status}
+                          onChange={(e) => updateStatus(order.id, e.target.value as FoodOrder["status"])}
+                          className="border border-gray-300 rounded-md px-2 py-1 text-xs"
+                        >
+                          {DINE_IN_STATUSES.map((s) => (
+                            <option key={s} value={s}>
+                              {s.replace(/_/g, " ")}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <ul className="mt-2 text-xs text-gray-500 space-y-0.5">
+                        {order.items.map((i, idx) => (
+                          <li key={idx}>
+                            {i.qty} × {i.name} — {(i.qty * i.price).toFixed(2)}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-xs font-medium mt-1">
+                        Total: {order.total_amount} {order.currency}
+                      </p>
+                      {order.notes && <p className="text-xs text-gray-400 mt-1">Note: {order.notes}</p>}
+                    </div>
                   ))}
-                </select>
+                </div>
               </div>
-              <ul className="mt-2 text-xs text-gray-500 space-y-0.5">
-                {order.items.map((i, idx) => (
-                  <li key={idx}>
-                    {i.qty} × {i.name} — {(i.qty * i.price).toFixed(2)}
-                  </li>
-                ))}
-              </ul>
-              <p className="text-xs font-medium mt-1">
-                Total: {order.total_amount} {order.currency}
-              </p>
-              {order.notes && <p className="text-xs text-gray-400 mt-1">Note: {order.notes}</p>}
+            );
+          })}
+        </div>
+      )}
+
+      {billTable && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
+          onClick={() => setBillTable(null)}
+        >
+          <div className="bg-white rounded-2xl p-5 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium">Final bill — Table {billTable}</p>
+              <button onClick={() => setBillTable(null)} className="text-xs text-gray-500 underline">
+                Close
+              </button>
             </div>
-          ))}
+            {billItems.length === 0 ? (
+              <p className="text-sm text-gray-400 mb-4">No items on this bill.</p>
+            ) : (
+              <div className="divide-y divide-gray-100 border border-gray-200 rounded-lg mb-3">
+                {billItems.map((i) => (
+                  <div key={i.name} className="flex items-center justify-between px-3 py-2 text-sm">
+                    <span>
+                      {i.qty} × {i.name}
+                    </span>
+                    <span>{(i.qty * i.price).toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-sm font-medium mb-4">
+              Grand total: {billTotal.toFixed(2)} {hotel.currency}
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => closeTable(billTable)}
+                disabled={closingTable}
+                className="text-sm bg-gray-900 text-white rounded-md px-4 py-2 disabled:opacity-50 flex-1"
+              >
+                {closingTable ? "Closing..." : "Close table"}
+              </button>
+              <button
+                onClick={() => setBillTable(null)}
+                className="text-sm border border-gray-300 rounded-md px-4 py-2"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </main>
