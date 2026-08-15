@@ -101,6 +101,7 @@ export default function KitchenPage() {
   const pending = orders.filter((o) => o.status === "pending");
   const confirmed = orders.filter((o) => o.status === "confirmed");
   const preparing = orders.filter((o) => o.status === "preparing");
+  const ready = orders.filter((o) => o.status === "ready");
   const done = orders.filter((o) => o.status === "delivered" || o.status === "cancelled");
 
   function OrderCard({ order }: { order: FoodOrder }) {
@@ -118,7 +119,7 @@ export default function KitchenPage() {
           ))}
         </ul>
         {order.notes && <p className="text-xs text-gray-400 mt-1">Note: {order.notes}</p>}
-        <div className="mt-3">
+        <div className="mt-3 flex items-center gap-2">
           {order.status === "pending" && (
             <button
               onClick={() => advanceStatus(order, "confirmed")}
@@ -129,18 +130,54 @@ export default function KitchenPage() {
             </button>
           )}
           {order.status === "confirmed" && (
-            <button
-              onClick={() => advanceStatus(order, "preparing")}
-              disabled={updatingId === order.id}
-              className="text-xs bg-gray-900 text-white rounded-md px-3 py-1.5 disabled:opacity-50"
-            >
-              {updatingId === order.id ? "..." : "Start preparing"}
-            </button>
+            <>
+              <button
+                onClick={() => advanceStatus(order, "pending")}
+                disabled={updatingId === order.id}
+                className="text-xs border border-gray-300 rounded-md px-3 py-1.5 disabled:opacity-50"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => advanceStatus(order, "preparing")}
+                disabled={updatingId === order.id}
+                className="text-xs bg-gray-900 text-white rounded-md px-3 py-1.5 disabled:opacity-50"
+              >
+                {updatingId === order.id ? "..." : "Start preparing"}
+              </button>
+            </>
           )}
           {order.status === "preparing" && (
-            <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1">
-              In the kitchen — waiter will serve &amp; close
-            </span>
+            <>
+              <button
+                onClick={() => advanceStatus(order, "confirmed")}
+                disabled={updatingId === order.id}
+                className="text-xs border border-gray-300 rounded-md px-3 py-1.5 disabled:opacity-50"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => advanceStatus(order, "ready")}
+                disabled={updatingId === order.id}
+                className="text-xs bg-gray-900 text-white rounded-md px-3 py-1.5 disabled:opacity-50"
+              >
+                {updatingId === order.id ? "..." : "Mark ready"}
+              </button>
+            </>
+          )}
+          {order.status === "ready" && (
+            <>
+              <button
+                onClick={() => advanceStatus(order, "preparing")}
+                disabled={updatingId === order.id}
+                className="text-xs border border-gray-300 rounded-md px-3 py-1.5 disabled:opacity-50"
+              >
+                Back
+              </button>
+              <span className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-1">
+                Ready — waiter will serve &amp; close
+              </span>
+            </>
           )}
           {(order.status === "delivered" || order.status === "cancelled") && (
             <span className="text-xs text-gray-400">{order.status}</span>
@@ -176,7 +213,7 @@ export default function KitchenPage() {
         </button>
       </div>
 
-      <div className="grid sm:grid-cols-3 gap-4 mb-6">
+      <div className="grid sm:grid-cols-4 gap-4 mb-6">
         <div>
           <p className="text-xs uppercase tracking-wide text-gray-400 mb-2">New ({pending.length})</p>
           <div className="space-y-2">
@@ -200,6 +237,15 @@ export default function KitchenPage() {
           <div className="space-y-2">
             {preparing.length === 0 && <p className="text-xs text-gray-400">Nothing here.</p>}
             {preparing.map((o) => (
+              <OrderCard key={o.id} order={o} />
+            ))}
+          </div>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-gray-400 mb-2">Ready ({ready.length})</p>
+          <div className="space-y-2">
+            {ready.length === 0 && <p className="text-xs text-gray-400">Nothing here.</p>}
+            {ready.map((o) => (
               <OrderCard key={o.id} order={o} />
             ))}
           </div>
