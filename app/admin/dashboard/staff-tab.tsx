@@ -8,6 +8,7 @@ type StaffRow = {
   role: string;
   full_name: string | null;
   email: string;
+  is_suspended: boolean;
   created_at: string;
 };
 
@@ -24,6 +25,8 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdCreds, setCreatedCreds] = useState<{ email: string; password: string } | null>(null);
+  const [resetCreds, setResetCreds] = useState<{ id: string; email: string; password: string } | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     load();
@@ -34,7 +37,7 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
     setLoading(true);
     const { data } = await supabase
       .from("hotel_users")
-      .select("id, role, full_name, email, created_at")
+      .select("id, role, full_name, email, is_suspended, created_at")
       .eq("hotel_id", hotelId)
       .in("role", ["waiter", "kitchen"])
       .order("created_at", { ascending: true });
@@ -70,8 +73,82 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
     if (!error) setStaff((prev) => prev.filter((s) => s.id !== id));
   }
 
+  async function resetPassword(row: StaffRow) {
+    if (!confirm(`Reset the password for ${row.full_name || row.email}? Their current password will stop working.`)) return;
+    setBusyId(row.id);
+    setResetCreds(null);
+    const { data, error } = await supabase.rpc("reset_hotel_staff_password", { p_user_id: row.id });
+    setBusyId(null);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    const result = Array.isArray(data) ? data[0] : data;
+    if (result) setResetCreds({ id: row.id, email: result.email, password: result.password });
+  }
+
+  async function toggleSuspend(row: StaffRow) {
+    const next = !row.is_suspended;
+    if (next && !confirm(`Suspend ${row.full_name || row.email}? They won't be able to log in until unsuspended.`)) return;
+    setBusyId(row.id);
+    const { error } = await supabase.rpc("set_hotel_staff_suspended", { p_user_id: row.id, p_suspended: next });
+    setBusyId(null);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setStaff((prev) => prev.map((s) => (s.id === row.id ? { ...s, is_suspended: next } : s)));
+  }
+
   const waiters = staff.filter((s) => s.role === "waiter");
   const kitchenStaff = staff.filter((s) => s.role === "kitchen");
+
+  function StaffRowItem({ s }: { s: StaffRow }) {
+    return (
+      <div className="p-3 text-sm">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2">
+              <p>{s.full_name || s.email}</p>
+              {s.is_suspended && (
+                <span className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
+                  Suspended
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-400">{s.email}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => resetPassword(s)}
+              disabled={busyId === s.id}
+              className="text-xs text-gray-600 underline disabled:opacity-50"
+            >
+              Reset password
+            </button>
+            <button
+              onClick={() => toggleSuspend(s)}
+              disabled={busyId === s.id}
+              className="text-xs text-amber-700 underline disabled:opacity-50"
+            >
+              {s.is_suspended ? "Unsuspend" : "Suspend"}
+            </button>
+            <button onClick={() => removeStaff(s.id)} className="text-xs text-red-600 underline">
+              Remove
+            </button>
+          </div>
+        </div>
+        {resetCreds && resetCreds.id === s.id && (
+          <div className="mt-2 text-xs bg-green-50 border border-green-200 rounded-md p-3 text-green-800">
+            <p className="font-medium mb-1">New password — share this with them now:</p>
+            <p>Email: {resetCreds.email}</p>
+            <p>Password: {resetCreds.password}</p>
+            <p className="text-green-600 mt-1">This password won&apos;t be shown again.</p>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -80,7 +157,8 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
         <p className="text-xs text-gray-500 mb-3">
           Waiters get their own login to take dine-in orders by table and update order status.
           Kitchen staff get a login to see incoming orders and acknowledge them into preparation.
-          Neither can see bookings, rooms, or hotel settings.
+          Neither can see bookings, rooms, or hotel settings. Staff can&apos;t change their own
+          password — reset it here if they forget it.
         </p>
         <div className="grid sm:grid-cols-3 gap-2 mb-2">
           <input
@@ -132,15 +210,7 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
             <div className="p-3 text-xs text-gray-400 bg-gray-50 rounded-t-xl">Waiters</div>
             {waiters.length === 0 && <p className="p-4 text-sm text-gray-500">No waiter accounts yet.</p>}
             {waiters.map((s) => (
-              <div key={s.id} className="p-3 flex items-center justify-between text-sm">
-                <div>
-                  <p>{s.full_name || s.email}</p>
-                  <p className="text-xs text-gray-400">{s.email}</p>
-                </div>
-                <button onClick={() => removeStaff(s.id)} className="text-xs text-red-600">
-                  Remove
-                </button>
-              </div>
+              <StaffRowItem key={s.id} s={s} />
             ))}
           </div>
 
@@ -148,15 +218,7 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
             <div className="p-3 text-xs text-gray-400 bg-gray-50 rounded-t-xl">Kitchen</div>
             {kitchenStaff.length === 0 && <p className="p-4 text-sm text-gray-500">No kitchen accounts yet.</p>}
             {kitchenStaff.map((s) => (
-              <div key={s.id} className="p-3 flex items-center justify-between text-sm">
-                <div>
-                  <p>{s.full_name || s.email}</p>
-                  <p className="text-xs text-gray-400">{s.email}</p>
-                </div>
-                <button onClick={() => removeStaff(s.id)} className="text-xs text-red-600">
-                  Remove
-                </button>
-              </div>
+              <StaffRowItem key={s.id} s={s} />
             ))}
           </div>
         </div>
