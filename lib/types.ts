@@ -1,3 +1,16 @@
+export type SoundTone = "bell" | "chime" | "alert" | "soft";
+
+export type RoleSoundSettings = {
+  enabled: boolean;
+  tone: SoundTone;
+};
+
+export type NotificationSettings = {
+  kitchen: RoleSoundSettings;
+  waiter: RoleSoundSettings;
+  admin: RoleSoundSettings;
+};
+
 export type Hotel = {
   id: string;
   name: string;
@@ -6,6 +19,9 @@ export type Hotel = {
   plan: "starter" | "growth" | "pro";
   brand_color: string;
   currency: string;
+  currency_locked: boolean;
+  notification_settings: NotificationSettings;
+  refresh_interval_seconds: number;
   status: "pending" | "active" | "suspended" | "trial";
   description: string | null;
   tagline: string | null;
@@ -143,4 +159,5 @@ export type FoodOrder = {
   status: "pending" | "confirmed" | "preparing" | "ready" | "out_for_delivery" | "delivered" | "cancelled";
   notes: string | null;
   created_at: string;
+  closed_at: string | null;
 };
