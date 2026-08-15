@@ -763,6 +763,7 @@ const ORDER_STATUSES: FoodOrder["status"][] = [
   "pending",
   "confirmed",
   "preparing",
+  "ready",
   "out_for_delivery",
   "delivered",
   "cancelled",
