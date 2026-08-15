@@ -418,7 +418,7 @@ export default function WaiterPage() {
                         >
                           {DINE_IN_STATUSES.map((s) => (
                             <option key={s} value={s}>
-                              {s.replace(/_/g, " ")}
+                              {s === "delivered" ? "served" : s.replace(/_/g, " ")}
                             </option>
                           ))}
                         </select>
