@@ -13,6 +13,7 @@ type WaiterUserRow = {
   full_name: string | null;
   email: string;
   is_suspended: boolean;
+  self_password_reset_allowed: boolean;
   hotels: Hotel;
 };
 
@@ -45,6 +46,31 @@ export default function WaiterPage() {
   const [billTable, setBillTable] = useState<string | null>(null);
   const [closingTable, setClosingTable] = useState(false);
 
+  const [showChangePw, setShowChangePw] = useState(false);
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
+
+  function generatePassword() {
+    const bytes = new Uint8Array(9);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(36).padStart(2, "0")).join("").slice(0, 12);
+  }
+
+  async function handleGeneratePassword() {
+    setPwSaving(true);
+    setPwError(null);
+    setGeneratedPassword(null);
+    const newPassword = generatePassword();
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setPwSaving(false);
+    if (error) {
+      setPwError(error.message);
+      return;
+    }
+    setGeneratedPassword(newPassword);
+  }
+
   useEffect(() => {
     (async () => {
       const { data: auth } = await supabase.auth.getUser();
@@ -55,7 +81,7 @@ export default function WaiterPage() {
 
       const { data: hu } = await supabase
         .from("hotel_users")
-        .select("id, hotel_id, role, full_name, email, is_suspended, hotels(*)")
+        .select("id, hotel_id, role, full_name, email, is_suspended, self_password_reset_allowed, hotels(*)")
         .eq("auth_user_id", auth.user.id)
         .maybeSingle();
 
@@ -267,15 +293,53 @@ export default function WaiterPage() {
             <p className="text-xs text-gray-500">Waiter · {waiterUser.full_name || waiterUser.email}</p>
           </div>
         </div>
-        <button
-          onClick={async () => {
-            await supabase.auth.signOut();
-            router.push("/admin/login");
-          }}
-          className="text-xs border border-gray-300 rounded-md px-3 py-1.5"
-        >
-          Sign out
-        </button>
+        <div className="flex items-center gap-2 relative">
+          {waiterUser.self_password_reset_allowed && (
+            <button
+              onClick={() => {
+                setShowChangePw((v) => !v);
+                setPwError(null);
+                setGeneratedPassword(null);
+              }}
+              className="text-xs border border-gray-300 rounded-md px-3 py-1.5"
+            >
+              Change password
+            </button>
+          )}
+          <button
+            onClick={async () => {
+              await supabase.auth.signOut();
+              router.push("/admin/login");
+            }}
+            className="text-xs border border-gray-300 rounded-md px-3 py-1.5"
+          >
+            Sign out
+          </button>
+
+          {showChangePw && (
+            <div className="absolute right-0 top-10 z-20 w-64 bg-white border border-gray-200 rounded-xl shadow-lg p-3 space-y-2">
+              <p className="text-xs font-medium">Change password</p>
+              <p className="text-xs text-gray-500">
+                Generates a new random password for your account and signs you in with it right away.
+              </p>
+              {pwError && <p className="text-xs text-red-600">{pwError}</p>}
+              {generatedPassword && (
+                <div className="text-xs bg-green-50 border border-green-200 rounded-md p-2 text-green-800">
+                  <p className="font-medium mb-1">Your new password:</p>
+                  <p className="font-mono">{generatedPassword}</p>
+                  <p className="text-green-600 mt-1">Save it now — it won&apos;t be shown again.</p>
+                </div>
+              )}
+              <button
+                onClick={handleGeneratePassword}
+                disabled={pwSaving}
+                className="w-full text-xs bg-gray-900 text-white rounded-md py-1.5 disabled:opacity-50"
+              >
+                {pwSaving ? "Generating..." : "Generate new password"}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="border border-gray-200 rounded-xl p-4 mb-6">
