@@ -18,6 +18,129 @@ const ROLE_LABELS: Record<string, string> = {
   kitchen: "Kitchen",
 };
 
+// Kept at module scope (not nested inside StaffTab) so its component identity
+// stays stable across re-renders. When it used to be defined inside StaffTab,
+// every keystroke in the "set a specific password" input triggered a
+// re-render that recreated this as a brand-new function component, which
+// made React unmount/remount the input and drop focus after every character.
+function StaffRowItem({
+  s,
+  resetOpenId,
+  resetInput,
+  resetCreds,
+  busyId,
+  error,
+  onToggleResetOpen,
+  onResetInputChange,
+  onGenerate,
+  onSetPassword,
+  onToggleSelfReset,
+  onToggleSuspend,
+  onRemove,
+}: {
+  s: StaffRow;
+  resetOpenId: string | null;
+  resetInput: string;
+  resetCreds: { id: string; email: string; password: string } | null;
+  busyId: string | null;
+  error: string | null;
+  onToggleResetOpen: (s: StaffRow) => void;
+  onResetInputChange: (v: string) => void;
+  onGenerate: (s: StaffRow) => void;
+  onSetPassword: (s: StaffRow) => void;
+  onToggleSelfReset: (s: StaffRow) => void;
+  onToggleSuspend: (s: StaffRow) => void;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <div className="p-3 text-sm">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p>{s.full_name || s.email}</p>
+            {s.is_suspended && (
+              <span className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
+                Suspended
+              </span>
+            )}
+            {s.self_password_reset_allowed && (
+              <span className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5">
+                Can reset own password
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-gray-400">{s.email}</p>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={() => onToggleResetOpen(s)}
+            disabled={busyId === s.id}
+            className="text-xs text-gray-600 underline disabled:opacity-50"
+          >
+            Reset password
+          </button>
+          <button
+            onClick={() => onToggleSelfReset(s)}
+            disabled={busyId === s.id}
+            className="text-xs text-blue-700 underline disabled:opacity-50"
+          >
+            {s.self_password_reset_allowed ? "Don't allow self-reset" : "Allow self-reset"}
+          </button>
+          <button
+            onClick={() => onToggleSuspend(s)}
+            disabled={busyId === s.id}
+            className="text-xs text-amber-700 underline disabled:opacity-50"
+          >
+            {s.is_suspended ? "Unsuspend" : "Suspend"}
+          </button>
+          <button onClick={() => onRemove(s.id)} className="text-xs text-red-600 underline">
+            Remove
+          </button>
+        </div>
+      </div>
+
+      {resetOpenId === s.id && (
+        <div className="mt-2 border border-gray-200 rounded-md p-3 space-y-2">
+          <button
+            onClick={() => onGenerate(s)}
+            disabled={busyId === s.id}
+            className="text-xs bg-gray-900 text-white rounded-md px-3 py-1.5 disabled:opacity-50"
+          >
+            Generate random password
+          </button>
+          <p className="text-xs text-gray-400">or set a specific password</p>
+          <div className="flex gap-2">
+            <input
+              placeholder="New password (min 6 characters)"
+              value={resetInput}
+              onChange={(e) => onResetInputChange(e.target.value)}
+              className="border border-gray-300 rounded-md px-2 py-1.5 text-xs flex-1"
+            />
+            <button
+              onClick={() => onSetPassword(s)}
+              disabled={busyId === s.id || resetInput.trim().length < 6}
+              className="text-xs bg-gray-900 text-white rounded-md px-3 py-1.5 disabled:opacity-50 whitespace-nowrap"
+            >
+              Set password
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && busyId === null && resetOpenId === s.id && <p className="text-xs text-red-600 mt-2">{error}</p>}
+
+      {resetCreds && resetCreds.id === s.id && (
+        <div className="mt-2 text-xs bg-green-50 border border-green-200 rounded-md p-3 text-green-800">
+          <p className="font-medium mb-1">New password — share this with them now:</p>
+          <p>Email: {resetCreds.email}</p>
+          <p>Password: {resetCreds.password}</p>
+          <p className="text-green-600 mt-1">This password won&apos;t be shown again.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function StaffTab({ hotelId }: { hotelId: string }) {
   const supabase = createBrowserClient();
   const [staff, setStaff] = useState<StaffRow[]>([]);
@@ -131,102 +254,14 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
     setStaff((prev) => prev.map((s) => (s.id === row.id ? { ...s, self_password_reset_allowed: next } : s)));
   }
 
+  function handleToggleResetOpen(row: StaffRow) {
+    setResetOpenId((prev) => (prev === row.id ? null : row.id));
+    setResetInput("");
+    setError(null);
+  }
+
   const waiters = staff.filter((s) => s.role === "waiter");
   const kitchenStaff = staff.filter((s) => s.role === "kitchen");
-
-  function StaffRowItem({ s }: { s: StaffRow }) {
-    return (
-      <div className="p-3 text-sm">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <p>{s.full_name || s.email}</p>
-              {s.is_suspended && (
-                <span className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
-                  Suspended
-                </span>
-              )}
-              {s.self_password_reset_allowed && (
-                <span className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5">
-                  Can reset own password
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-gray-400">{s.email}</p>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <button
-              onClick={() => {
-                setResetOpenId(resetOpenId === s.id ? null : s.id);
-                setResetInput("");
-                setError(null);
-              }}
-              disabled={busyId === s.id}
-              className="text-xs text-gray-600 underline disabled:opacity-50"
-            >
-              Reset password
-            </button>
-            <button
-              onClick={() => toggleSelfReset(s)}
-              disabled={busyId === s.id}
-              className="text-xs text-blue-700 underline disabled:opacity-50"
-            >
-              {s.self_password_reset_allowed ? "Don't allow self-reset" : "Allow self-reset"}
-            </button>
-            <button
-              onClick={() => toggleSuspend(s)}
-              disabled={busyId === s.id}
-              className="text-xs text-amber-700 underline disabled:opacity-50"
-            >
-              {s.is_suspended ? "Unsuspend" : "Suspend"}
-            </button>
-            <button onClick={() => removeStaff(s.id)} className="text-xs text-red-600 underline">
-              Remove
-            </button>
-          </div>
-        </div>
-
-        {resetOpenId === s.id && (
-          <div className="mt-2 border border-gray-200 rounded-md p-3 space-y-2">
-            <button
-              onClick={() => resetPassword(s)}
-              disabled={busyId === s.id}
-              className="text-xs bg-gray-900 text-white rounded-md px-3 py-1.5 disabled:opacity-50"
-            >
-              Generate random password
-            </button>
-            <p className="text-xs text-gray-400">or set a specific password</p>
-            <div className="flex gap-2">
-              <input
-                placeholder="New password (min 6 characters)"
-                value={resetInput}
-                onChange={(e) => setResetInput(e.target.value)}
-                className="border border-gray-300 rounded-md px-2 py-1.5 text-xs flex-1"
-              />
-              <button
-                onClick={() => resetPassword(s, resetInput.trim())}
-                disabled={busyId === s.id || resetInput.trim().length < 6}
-                className="text-xs bg-gray-900 text-white rounded-md px-3 py-1.5 disabled:opacity-50 whitespace-nowrap"
-              >
-                Set password
-              </button>
-            </div>
-          </div>
-        )}
-
-        {error && busyId === null && resetOpenId === s.id && <p className="text-xs text-red-600 mt-2">{error}</p>}
-
-        {resetCreds && resetCreds.id === s.id && (
-          <div className="mt-2 text-xs bg-green-50 border border-green-200 rounded-md p-3 text-green-800">
-            <p className="font-medium mb-1">New password — share this with them now:</p>
-            <p>Email: {resetCreds.email}</p>
-            <p>Password: {resetCreds.password}</p>
-            <p className="text-green-600 mt-1">This password won&apos;t be shown again.</p>
-          </div>
-        )}
-      </div>
-    );
-  }
 
   return (
     <div>
@@ -289,7 +324,22 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
             <div className="p-3 text-xs text-gray-400 bg-gray-50 rounded-t-xl">Waiters</div>
             {waiters.length === 0 && <p className="p-4 text-sm text-gray-500">No waiter accounts yet.</p>}
             {waiters.map((s) => (
-              <StaffRowItem key={s.id} s={s} />
+              <StaffRowItem
+                key={s.id}
+                s={s}
+                resetOpenId={resetOpenId}
+                resetInput={resetInput}
+                resetCreds={resetCreds}
+                busyId={busyId}
+                error={error}
+                onToggleResetOpen={handleToggleResetOpen}
+                onResetInputChange={setResetInput}
+                onGenerate={(row) => resetPassword(row)}
+                onSetPassword={(row) => resetPassword(row, resetInput.trim())}
+                onToggleSelfReset={toggleSelfReset}
+                onToggleSuspend={toggleSuspend}
+                onRemove={removeStaff}
+              />
             ))}
           </div>
 
@@ -297,7 +347,22 @@ export default function StaffTab({ hotelId }: { hotelId: string }) {
             <div className="p-3 text-xs text-gray-400 bg-gray-50 rounded-t-xl">Kitchen</div>
             {kitchenStaff.length === 0 && <p className="p-4 text-sm text-gray-500">No kitchen accounts yet.</p>}
             {kitchenStaff.map((s) => (
-              <StaffRowItem key={s.id} s={s} />
+              <StaffRowItem
+                key={s.id}
+                s={s}
+                resetOpenId={resetOpenId}
+                resetInput={resetInput}
+                resetCreds={resetCreds}
+                busyId={busyId}
+                error={error}
+                onToggleResetOpen={handleToggleResetOpen}
+                onResetInputChange={setResetInput}
+                onGenerate={(row) => resetPassword(row)}
+                onSetPassword={(row) => resetPassword(row, resetInput.trim())}
+                onToggleSelfReset={toggleSelfReset}
+                onToggleSuspend={toggleSuspend}
+                onRemove={removeStaff}
+              />
             ))}
           </div>
         </div>
