@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { FoodOrder, Hotel } from "@/lib/types";
+import { playTone } from "@/lib/sound";
 
 type KitchenUserRow = {
   id: string;
@@ -30,6 +31,7 @@ export default function KitchenPage() {
   const [orders, setOrders] = useState<FoodOrder[]>([]);
   const [showDone, setShowDone] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [showChangePw, setShowChangePw] = useState(false);
   const [pwSaving, setPwSaving] = useState(false);
@@ -90,18 +92,40 @@ export default function KitchenPage() {
       await loadOrders(huTyped.hotel_id);
       setLoading(false);
 
-      // Keep the kitchen queue live as waiters place new orders.
+      const soundSettings = huTyped.hotels.notification_settings?.kitchen;
+
+      // Keep the kitchen queue live as waiters place new orders. A new
+      // order (INSERT) is the one event that should play a sound - status
+      // updates from the kitchen's own actions shouldn't alert itself.
       const channel = supabase
         .channel(`kitchen-orders-${huTyped.hotel_id}`)
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "food_orders", filter: `hotel_id=eq.${huTyped.hotel_id}` },
+          { event: "INSERT", schema: "public", table: "food_orders", filter: `hotel_id=eq.${huTyped.hotel_id}` },
+          () => {
+            if (soundSettings?.enabled) playTone(soundSettings.tone);
+            loadOrders(huTyped.hotel_id);
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "food_orders", filter: `hotel_id=eq.${huTyped.hotel_id}` },
           () => loadOrders(huTyped.hotel_id)
         )
         .subscribe();
 
+      // Realtime is the primary way this page updates, but as a backup the
+      // owner can set a hotel-wide polling interval (e.g. faster during busy
+      // hours) from Hotel profile. 0 means polling is off.
+      const intervalSeconds = huTyped.hotels.refresh_interval_seconds || 0;
+      const poll =
+        intervalSeconds > 0
+          ? setInterval(() => loadOrders(huTyped.hotel_id), intervalSeconds * 1000)
+          : null;
+
       return () => {
         supabase.removeChannel(channel);
+        if (poll) clearInterval(poll);
       };
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -119,6 +143,13 @@ export default function KitchenPage() {
       .is("closed_at", null)
       .order("created_at", { ascending: true });
     setOrders((data as FoodOrder[]) || []);
+  }
+
+  async function handleManualRefresh() {
+    if (!kitchenUser) return;
+    setRefreshing(true);
+    await loadOrders(kitchenUser.hotel_id);
+    setRefreshing(false);
   }
 
   async function advanceStatus(order: FoodOrder, nextStatus: FoodOrder["status"]) {
@@ -239,6 +270,13 @@ export default function KitchenPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 relative">
+          <button
+            onClick={handleManualRefresh}
+            disabled={refreshing}
+            className="text-xs border border-gray-300 rounded-md px-3 py-1.5 disabled:opacity-50"
+          >
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </button>
           {kitchenUser.self_password_reset_allowed && (
             <button
               onClick={() => {
