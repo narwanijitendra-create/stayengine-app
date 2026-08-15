@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { MenuItem, MenuCategory, FoodOrder, FoodOrderItem, Hotel } from "@/lib/types";
 import { buildMenuGroups } from "@/lib/menu";
+import { playTone } from "@/lib/sound";
 
 type WaiterUserRow = {
   id: string;
@@ -36,6 +37,7 @@ export default function WaiterPage() {
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [orders, setOrders] = useState<FoodOrder[]>([]);
   const [showAllOrders, setShowAllOrders] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [tableNumber, setTableNumber] = useState("");
   const [itemSearch, setItemSearch] = useState("");
@@ -121,36 +123,64 @@ export default function WaiterPage() {
       await loadOrders(huTyped.hotel_id);
       setLoading(false);
 
-      // Keep the order queue live across multiple waiters/devices.
+      const soundSettings = huTyped.hotels.notification_settings?.waiter;
+
+      // Keep the order queue live across multiple waiters/devices. A new
+      // sound plays specifically when the kitchen marks something "ready" -
+      // that's the moment a waiter actually needs to go do something.
       const channel = supabase
         .channel(`dine-in-orders-${huTyped.hotel_id}`)
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "food_orders", filter: `hotel_id=eq.${huTyped.hotel_id}` },
+          { event: "UPDATE", schema: "public", table: "food_orders", filter: `hotel_id=eq.${huTyped.hotel_id}` },
+          (payload) => {
+            const updated = payload.new as FoodOrder;
+            const previous = payload.old as Partial<FoodOrder>;
+            if (soundSettings?.enabled && updated.status === "ready" && previous.status !== "ready") {
+              playTone(soundSettings.tone);
+            }
+            loadOrders(huTyped.hotel_id);
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "food_orders", filter: `hotel_id=eq.${huTyped.hotel_id}` },
           () => loadOrders(huTyped.hotel_id)
         )
         .subscribe();
 
+      // Realtime is the primary way this page updates, but as a backup the
+      // owner can set a hotel-wide polling interval (e.g. faster during busy
+      // hours) from Hotel profile. 0 means polling is off.
+      const intervalSeconds = huTyped.hotels.refresh_interval_seconds || 0;
+      const poll =
+        intervalSeconds > 0
+          ? setInterval(() => loadOrders(huTyped.hotel_id), intervalSeconds * 1000)
+          : null;
+
       return () => {
         supabase.removeChannel(channel);
+        if (poll) clearInterval(poll);
       };
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadOrders(hotelId: string) {
-    // closed_at marks a table's dining session as fully settled - excluding
-    // those here keeps a brand new party seated at the same table number
-    // from ever being merged with (or billed alongside) an earlier party's
-    // already-closed meal at that table.
     const { data } = await supabase
       .from("food_orders")
       .select("*")
       .eq("hotel_id", hotelId)
       .eq("order_type", "dine_in")
-      .is("closed_at", null)
       .order("created_at", { ascending: false });
     setOrders((data as FoodOrder[]) || []);
+  }
+
+  async function handleManualRefresh() {
+    if (!waiterUser) return;
+    setRefreshing(true);
+    await loadOrders(waiterUser.hotel_id);
+    setRefreshing(false);
   }
 
   function addToCart(item: MenuItem) {
@@ -222,9 +252,8 @@ export default function WaiterPage() {
   // A table can have several order rounds (starters, then mains, then
   // dessert, etc). Closing the table marks every still-open round as served,
   // then stamps closed_at on every order in the session (served ones too) so
-  // the whole session drops off the live board. Without that second step, a
-  // new party seated at the same table number later would have their order
-  // grouped and billed together with this party's already-paid meal.
+  // the whole session becomes its own separate history entry instead of
+  // staying mixed in with whatever a new party orders next at this table.
   async function closeTable(tableNumber: string) {
     if (!waiterUser) return;
     setClosingTable(true);
@@ -257,18 +286,23 @@ export default function WaiterPage() {
   const searchQuery = itemSearch.trim().toLowerCase();
   const filteredItems = searchQuery ? items.filter((i) => i.name.toLowerCase().includes(searchQuery)) : items;
   const groups = buildMenuGroups(filteredItems, categories);
-  // Served ("delivered") orders stay on the active board - a table isn't
-  // done until its bill is actually closed, at which point closed_at is set
-  // and loadOrders excludes it entirely. So the only thing this toggle hides
-  // by default is cancelled orders.
-  const visibleOrders = showAllOrders ? orders : orders.filter((o) => o.status !== "cancelled");
 
-  // Group orders by table so a table with several rounds (starters, mains,
-  // dessert...) shows as one card instead of scattered separate entries.
+  // The live board only ever shows each table's current, still-open dining
+  // session (closed_at is null) - a served order stays here until the table
+  // is actually closed, so it's still visible for billing. Cancelled orders
+  // are hidden by default too. Once a table is closed, its orders move to
+  // the history section below instead of disappearing or merging with
+  // whatever the next party at that table number orders.
+  const openOrders = orders.filter((o) => o.closed_at === null && o.status !== "cancelled");
+  const cancelledOrders = orders.filter((o) => o.status === "cancelled" && o.closed_at === null);
+  const closedOrders = orders.filter((o) => o.closed_at !== null);
+
+  // Group open orders by table so a table with several rounds (starters,
+  // mains, dessert...) shows as one card instead of scattered separate entries.
   const tableGroups: { tableNumber: string; orders: FoodOrder[] }[] = [];
   {
     const byTable = new Map<string, FoodOrder[]>();
-    for (const o of visibleOrders) {
+    for (const o of openOrders) {
       const key = o.table_number || "—";
       if (!byTable.has(key)) byTable.set(key, []);
       byTable.get(key)!.push(o);
@@ -278,10 +312,30 @@ export default function WaiterPage() {
     }
   }
 
+  // Closed sessions, grouped by table + the moment they were closed, so two
+  // different sittings at the same table number always render as separate
+  // history cards rather than one merged total.
+  const closedSessionGroups: { tableNumber: string; closedAt: string; orders: FoodOrder[] }[] = [];
+  {
+    const byKey = new Map<string, FoodOrder[]>();
+    for (const o of closedOrders) {
+      const key = `${o.table_number || "—"}|${o.closed_at}`;
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key)!.push(o);
+    }
+    for (const [key, ords] of byKey) {
+      const sep = key.lastIndexOf("|");
+      closedSessionGroups.push({ tableNumber: key.slice(0, sep), closedAt: key.slice(sep + 1), orders: ords });
+    }
+    closedSessionGroups.sort((a, b) => new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime());
+  }
+
   // Final bill for the currently open bill modal: every non-cancelled order
-  // for that table (regardless of the "show completed" toggle above),
-  // consolidated into one itemized list plus a grand total.
-  const billOrders = billTable ? orders.filter((o) => o.table_number === billTable && o.status !== "cancelled") : [];
+  // in that table's currently open session, consolidated into one itemized
+  // list plus a grand total.
+  const billOrders = billTable
+    ? orders.filter((o) => o.table_number === billTable && o.closed_at === null && o.status !== "cancelled")
+    : [];
   const billItems: { name: string; qty: number; price: number }[] = [];
   {
     const byName = new Map<string, { name: string; qty: number; price: number }>();
@@ -315,6 +369,13 @@ export default function WaiterPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 relative">
+          <button
+            onClick={handleManualRefresh}
+            disabled={refreshing}
+            className="text-xs border border-gray-300 rounded-md px-3 py-1.5 disabled:opacity-50"
+          >
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </button>
           {waiterUser.self_password_reset_allowed && (
             <button
               onClick={() => {
@@ -460,7 +521,7 @@ export default function WaiterPage() {
         <p className="text-sm font-medium">Table orders</p>
         <label className="text-xs text-gray-500 flex items-center gap-1.5">
           <input type="checkbox" checked={showAllOrders} onChange={(e) => setShowAllOrders(e.target.checked)} />
-          Show cancelled orders
+          Show closed &amp; cancelled orders
         </label>
       </div>
 
@@ -534,6 +595,64 @@ export default function WaiterPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {showAllOrders && (closedSessionGroups.length > 0 || cancelledOrders.length > 0) && (
+        <div className="mt-6">
+          <p className="text-sm font-medium mb-2">Order history</p>
+          <div className="space-y-3">
+            {closedSessionGroups.map((g) => {
+              const tableTotal = g.orders.reduce((sum, o) => sum + Number(o.total_amount), 0);
+              return (
+                <div key={`${g.tableNumber}-${g.closedAt}`} className="border border-gray-200 rounded-xl overflow-hidden opacity-80">
+                  <div className="px-4 py-3 bg-gray-50">
+                    <p className="text-sm font-medium">Table {g.tableNumber}</p>
+                    <p className="text-xs text-gray-400">
+                      Closed {new Date(g.closedAt).toLocaleString()} · {g.orders.length} order
+                      {g.orders.length > 1 ? "s" : ""} · Total {tableTotal.toFixed(2)} {hotel.currency}
+                    </p>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {g.orders.map((order) => (
+                      <div key={order.id} className="px-4 py-3">
+                        <p className="text-xs text-gray-400">{new Date(order.created_at).toLocaleString()}</p>
+                        <ul className="mt-2 text-xs text-gray-500 space-y-0.5">
+                          {order.items.map((i, idx) => (
+                            <li key={idx}>
+                              {i.qty} × {i.name} — {(i.qty * i.price).toFixed(2)}
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="text-xs font-medium mt-1">
+                          Total: {order.total_amount} {order.currency}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            {cancelledOrders.length > 0 && (
+              <div className="border border-gray-200 rounded-xl overflow-hidden opacity-80">
+                <div className="px-4 py-3 bg-gray-50">
+                  <p className="text-sm font-medium">Cancelled</p>
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {cancelledOrders.map((order) => (
+                    <div key={order.id} className="px-4 py-3">
+                      <p className="text-xs text-gray-400">
+                        Table {order.table_number} · {new Date(order.created_at).toLocaleString()}
+                      </p>
+                      <p className="text-xs font-medium mt-1">
+                        Total: {order.total_amount} {order.currency}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
