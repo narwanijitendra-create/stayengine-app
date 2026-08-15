@@ -3,9 +3,24 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
-import type { Booking, RoomType, Hotel, NearbyPoint } from "@/lib/types";
+import type { Booking, RoomType, Hotel, NearbyPoint, NotificationSettings, SoundTone } from "@/lib/types";
 import RestaurantTab from "./restaurant-tab";
 import StaffTab from "./staff-tab";
+import { playTone, SOUND_TONE_OPTIONS } from "@/lib/sound";
+
+const CURRENCY_OPTIONS = ["USD", "EUR", "GBP", "INR", "AED", "AUD", "CAD", "SGD", "JPY", "ZAR"];
+const REFRESH_INTERVAL_OPTIONS: { value: number; label: string }[] = [
+  { value: 0, label: "Off (realtime only)" },
+  { value: 10, label: "Every 10 seconds" },
+  { value: 30, label: "Every 30 seconds" },
+  { value: 60, label: "Every 1 minute" },
+  { value: 300, label: "Every 5 minutes" },
+];
+const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  kitchen: { enabled: true, tone: "bell" },
+  waiter: { enabled: true, tone: "bell" },
+  admin: { enabled: true, tone: "bell" },
+};
 
 type HotelUserRow = {
   id: string;
@@ -187,6 +202,9 @@ function AdminDashboardInner() {
     contact_phone: string;
     contact_email: string;
     whatsapp_number: string;
+  currency: string;
+  notification_settings: NotificationSettings;
+  refresh_interval_seconds: number;
   } | null>(null);
   const [hotelSaving, setHotelSaving] = useState(false);
   const [hotelSaveMsg, setHotelSaveMsg] = useState<string | null>(null);
@@ -255,6 +273,9 @@ function AdminDashboardInner() {
             contact_phone: targetHotel.contact_phone ?? "",
             contact_email: targetHotel.contact_email ?? "",
             whatsapp_number: targetHotel.whatsapp_number ?? "",
+            currency: targetHotel.currency ?? "USD",
+            notification_settings: targetHotel.notification_settings ?? DEFAULT_NOTIFICATION_SETTINGS,
+            refresh_interval_seconds: targetHotel.refresh_interval_seconds ?? 0,
           });
 
           const [{ data: b }, { data: rt }, { data: np }] = await Promise.all([
@@ -308,6 +329,9 @@ function AdminDashboardInner() {
         contact_phone: huTyped.hotels.contact_phone ?? "",
         contact_email: huTyped.hotels.contact_email ?? "",
         whatsapp_number: huTyped.hotels.whatsapp_number ?? "",
+        currency: huTyped.hotels.currency ?? "USD",
+        notification_settings: huTyped.hotels.notification_settings ?? DEFAULT_NOTIFICATION_SETTINGS,
+        refresh_interval_seconds: huTyped.hotels.refresh_interval_seconds ?? 0,
       });
 
       const [{ data: b }, { data: rt }, { data: np }] = await Promise.all([
@@ -437,7 +461,7 @@ function AdminDashboardInner() {
     if (!hotelUser || !hotelForm) return;
     setHotelSaving(true);
     setHotelSaveMsg(null);
-    const payload = {
+    const payload: Record<string, unknown> = {
       tagline: hotelForm.tagline.trim() || null,
       description: hotelForm.description.trim() || null,
       address: hotelForm.address.trim() || null,
@@ -448,7 +472,12 @@ function AdminDashboardInner() {
       contact_phone: hotelForm.contact_phone.trim() || null,
       contact_email: hotelForm.contact_email.trim() || null,
       whatsapp_number: hotelForm.whatsapp_number.trim() || null,
+      notification_settings: hotelForm.notification_settings,
+      refresh_interval_seconds: hotelForm.refresh_interval_seconds,
     };
+    if (!hotel?.currency_locked || isPlatformAdmin) {
+      payload.currency = hotelForm.currency;
+    }
     const { data, error } = await supabase
       .from("hotels")
       .update(payload)
@@ -1212,7 +1241,94 @@ function AdminDashboardInner() {
               })}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="border-t border-gray-100 mt-4 pt-4">
+              <p className="text-sm font-medium mb-1">Currency</p>
+              <p className="text-xs text-gray-500 mb-2">
+                Shown to guests on bookings and restaurant orders.
+                {hotel.currency_locked && !isPlatformAdmin
+                  ? " Locked by StayEngine — contact support to change it."
+                  : ""}
+              </p>
+              <select
+                value={hotelForm.currency}
+                disabled={hotel.currency_locked && !isPlatformAdmin}
+                onChange={(e) => setHotelForm({ ...hotelForm, currency: e.target.value })}
+                className="border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-400"
+              >
+                {CURRENCY_OPTIONS.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="border-t border-gray-100 mt-4 pt-4">
+              <p className="text-sm font-medium mb-1">Notification sounds</p>
+              <p className="text-xs text-gray-500 mb-2">
+                Play a sound on the kitchen, waiter, and your own dashboard when new orders or bookings come in.
+              </p>
+              <div className="space-y-2">
+                {(["kitchen", "waiter", "admin"] as const).map((role) => {
+                  const roleSettings = hotelForm.notification_settings[role];
+                  return (
+                    <div key={role} className="flex items-center gap-2 flex-wrap">
+                      <label className="text-xs w-16 capitalize text-gray-600">{role}</label>
+                      <input
+                        type="checkbox"
+                        checked={roleSettings.enabled}
+                        onChange={(e) =>
+                          setHotelForm({
+                            ...hotelForm,
+                            notification_settings: {
+                              ...hotelForm.notification_settings,
+                              [role]: { ...roleSettings, enabled: e.target.checked },
+                            },
+                          })
+                        }
+                      />
+                      <select
+                        value={roleSettings.tone}
+                        onChange={(e) =>
+                          setHotelForm({
+                            ...hotelForm,
+                            notification_settings: {
+                              ...hotelForm.notification_settings,
+                              [role]: { ...roleSettings, tone: e.target.value as SoundTone },
+                            },
+                          })
+                        }
+                        className="border border-gray-300 rounded-md px-2 py-1 text-xs"
+                      >
+                        {SOUND_TONE_OPTIONS.map((t) => (
+                          <option key={t.value} value={t.value}>{t.label}</option>
+                        ))}
+                      </select>
+                      <button onClick={() => playTone(roleSettings.tone)} className="text-xs text-gray-500 underline">
+                        Test
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="border-t border-gray-100 mt-4 pt-4">
+              <p className="text-sm font-medium mb-1">Live order refresh</p>
+              <p className="text-xs text-gray-500 mb-2">
+                Kitchen and waiter screens already update live automatically. This is just a backup poll rate —
+                turn it up during busy hours for extra reassurance, or leave it off.
+              </p>
+              <select
+                value={hotelForm.refresh_interval_seconds}
+                onChange={(e) => setHotelForm({ ...hotelForm, refresh_interval_seconds: Number(e.target.value) })}
+                className="border border-gray-300 rounded-md px-3 py-2 text-sm"
+              >
+                {REFRESH_INTERVAL_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2 mt-4">
               <button
                 onClick={saveHotelProfile}
                 disabled={hotelSaving}
