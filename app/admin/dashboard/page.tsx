@@ -266,6 +266,10 @@ function AdminDashboardInner() {
         router.push("/admin/waiter");
         return;
       }
+      if (huTyped.role === "kitchen") {
+        router.push("/admin/kitchen");
+        return;
+      }
       setHotelUser(huTyped);
       setHotel(huTyped.hotels);
       setMeForm({ full_name: huTyped.full_name ?? "", phone: huTyped.phone ?? "" });
