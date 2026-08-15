@@ -139,11 +139,16 @@ export default function WaiterPage() {
   }, []);
 
   async function loadOrders(hotelId: string) {
+    // closed_at marks a table's dining session as fully settled - excluding
+    // those here keeps a brand new party seated at the same table number
+    // from ever being merged with (or billed alongside) an earlier party's
+    // already-closed meal at that table.
     const { data } = await supabase
       .from("food_orders")
       .select("*")
       .eq("hotel_id", hotelId)
       .eq("order_type", "dine_in")
+      .is("closed_at", null)
       .order("created_at", { ascending: false });
     setOrders((data as FoodOrder[]) || []);
   }
@@ -215,18 +220,30 @@ export default function WaiterPage() {
   }
 
   // A table can have several order rounds (starters, then mains, then
-  // dessert, etc). Closing the table marks every still-open round for that
-  // table as delivered in one go, instead of updating each one by hand.
+  // dessert, etc). Closing the table marks every still-open round as served,
+  // then stamps closed_at on every order in the session (served ones too) so
+  // the whole session drops off the live board. Without that second step, a
+  // new party seated at the same table number later would have their order
+  // grouped and billed together with this party's already-paid meal.
   async function closeTable(tableNumber: string) {
     if (!waiterUser) return;
     setClosingTable(true);
+    const nowIso = new Date().toISOString();
     await supabase
       .from("food_orders")
       .update({ status: "delivered" })
       .eq("hotel_id", waiterUser.hotel_id)
       .eq("order_type", "dine_in")
       .eq("table_number", tableNumber)
-      .in("status", ["pending", "confirmed", "preparing"]);
+      .is("closed_at", null)
+      .in("status", ["pending", "confirmed", "preparing", "ready"]);
+    await supabase
+      .from("food_orders")
+      .update({ closed_at: nowIso })
+      .eq("hotel_id", waiterUser.hotel_id)
+      .eq("order_type", "dine_in")
+      .eq("table_number", tableNumber)
+      .is("closed_at", null);
     await loadOrders(waiterUser.hotel_id);
     setClosingTable(false);
     setBillTable(null);
