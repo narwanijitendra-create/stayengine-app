@@ -135,6 +135,7 @@ export type FoodOrder = {
   phone: string;
   room_number: string | null;
   delivery_address: string | null;
+  table_number: string | null;
   items: FoodOrderItem[];
   total_amount: number;
   currency: string;
