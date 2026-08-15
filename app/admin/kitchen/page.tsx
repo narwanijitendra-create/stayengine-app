@@ -180,7 +180,7 @@ export default function KitchenPage() {
             </>
           )}
           {(order.status === "delivered" || order.status === "cancelled") && (
-            <span className="text-xs text-gray-400">{order.status}</span>
+            <span className="text-xs text-gray-400">{order.status === "delivered" ? "served" : order.status}</span>
           )}
         </div>
       </div>
